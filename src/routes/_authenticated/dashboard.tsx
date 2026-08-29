@@ -178,7 +178,7 @@ function Dashboard() {
             {isLoading ? (
               <p className="p-5 text-sm text-muted-foreground">Loading…</p>
             ) : (data?.recent ?? []).length === 0 ? (
-              <p className="p-5 text-sm text-muted-foreground">No invoices yet. <Link to="/invoices" className="text-primary hover:underline">Create an Invoice</Link>.</p>
+              <p className="p-5 text-sm text-muted-foreground">No invoices yet. <Link to="/invoices" className="text-primary hover:underline">Create one</Link>.</p>
             ) : (
               <ul className="divide-y">
                 {data!.recent.map((inv: any) => (
