@@ -168,7 +168,11 @@ function Dashboard() {
           </CardContent>
         </Card>
         )}
-
+        
+        <div className="bg-yellow-400 px-4 py-2 text-center text-sm font-semibold text-black">
+          TEST ENVIRONMENT — This is a testing version of the application
+        </div>
+        
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-base">Recent Invoices</CardTitle>
