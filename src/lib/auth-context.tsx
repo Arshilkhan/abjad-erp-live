@@ -141,39 +141,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       if (!active) return;
 
-      // Always keep the latest authentication session and user.
       setSession(s);
       setUser(s?.user ?? null);
 
-      // A token refresh is not a new login.
-      // Do not reload permissions or show the full-page Loading screen.
-      if (event === "TOKEN_REFRESHED") return;
-
-      if (s?.user) {
-        setLoading(true);
-
-        setTimeout(() => {
-          if (!active) return;
-
-          void loadAccess(s.user.id)
-            .catch((error) => {
-              console.error("Could not load user permissions:", error);
-              setRoles([]);
-              setPanels([]);
-              setDocumentPermissions(EMPTY_DOCUMENT_PERMISSIONS);
-            })
-            .finally(() => {
-              if (active) setLoading(false);
-            });
-        }, 0);
-      } else {
+      if (event === "SIGNED_OUT" || !s?.user) {
         setRoles([]);
         setPanels([]);
         setDocumentPermissions(EMPTY_DOCUMENT_PERMISSIONS);
-        setLoading(false);
+        return;
       }
-    });
 
+      // Do not show the full-page loading screen for subsequent auth events.
+      // Token refreshes do not require permission reloads.
+      if (event === "TOKEN_REFRESHED") return;
+
+      // Reload permissions without blocking the application UI.
+      setTimeout(() => {
+        if (!active) return;
+
+        void loadAccess(s.user.id).catch((error) => {
+          console.error("Could not load user permissions:", error);
+        });
+      }, 0);
+    });
 
     supabase.auth.getSession().then(async ({ data, error }) => {
       if (!active) return;
