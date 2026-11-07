@@ -16,6 +16,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { downloadInvoicePdf } from "@/lib/invoice-pdf-download.functions";
 import { useState } from "react";
 import { isSalesDocumentKind, salesDocumentConfig, type SalesDocumentKind } from "@/lib/sales-documents";
+import { useAuth } from "@/lib/auth-context";
 
 export const Route = createFileRoute("/_authenticated/invoices/$id/")({
   validateSearch: (search: Record<string, unknown>): { kind?: SalesDocumentKind } => {
@@ -47,6 +48,7 @@ function InvoiceDetail() {
   const qc = useQueryClient();
   const getPdf = useServerFn(downloadInvoicePdf);
   const [downloading, setDownloading] = useState(false);
+  const { canPerform } = useAuth();
 
   const downloadPdf = async () => {
     setDownloading(true);
@@ -121,7 +123,7 @@ function InvoiceDetail() {
           amount_in_words: amountInWords(grand),
         };
         if (Math.abs(Number(invoice.subtotal ?? 0) - subtotal) > 0.01 ||
-            Math.abs(Number(invoice.grand_total ?? 0) - grand) > 0.01) {
+          Math.abs(Number(invoice.grand_total ?? 0) - grand) > 0.01) {
           await supabase.from(docTable).update(next).eq("id", id);
           Object.assign(invoice, next);
         }
@@ -248,11 +250,13 @@ function InvoiceDetail() {
               <Link to="/invoices/$id/edit" params={{ id }} search={{ kind }}><Pencil className="mr-1 h-4 w-4" /> Edit</Link>
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={duplicate}><Copy className="mr-1 h-4 w-4" /> Duplicate</Button>
-          {!isCancelled && !isTax && (
+          {canPerform(kind, "duplicate") && (
+            <Button variant="outline" size="sm" onClick={duplicate}><Copy className="mr-1 h-4 w-4" /> Duplicate</Button>
+          )}
+          {!isCancelled && !isTax && canPerform(kind, "cancel") && (
             <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={cancelOther}><Ban className="mr-1 h-4 w-4" /> Cancel</Button>
           )}
-          {!isCancelled && isTax && (
+          {!isCancelled && isTax && canPerform(kind, "cancel") && (
             <CancelInvoiceDialog
               invoiceId={id}
               invoiceNumber={billNo(invoice.invoice_number)}
@@ -262,7 +266,9 @@ function InvoiceDetail() {
               }
             />
           )}
-          <Button size="sm" onClick={downloadPdf} disabled={downloading}><Printer className="mr-1 h-4 w-4" /> {downloading ? "Preparing…" : "Download PDF"}</Button>
+          {canPerform(kind, "download_pdf") && (
+            <Button size="sm" onClick={downloadPdf} disabled={downloading}><Printer className="mr-1 h-4 w-4" /> {downloading ? "Preparing…" : "Download PDF"}</Button>
+          )}
         </div>
       </div>
 
@@ -497,20 +503,20 @@ function PrintableInvoice({ invoice, items, company, typeLabel }: { invoice: any
             const rejected = Number(it.rejected_quantity ?? 0);
             const billedQty = rejected > 0 ? Number(it.quantity) - rejected : Number(it.quantity);
             return (
-            <tr key={it.id}>
-              <td className={`${cellBorder} p-1 text-center`}>{it.sr_no}</td>
-              <td className={`${cellBorder} p-1 text-center`}>{it.hsn_code ?? ""}</td>
-              <td className={`${cellBorder} p-1`}>
-                {it.description}
-                {rejected > 0 && (
-                  <span className="text-[10px] italic"> (Delivered {Number(it.quantity)}, rejected {rejected})</span>
-                )}
-              </td>
-              <td className={`${cellBorder} p-1 text-right tabular-nums`}>{billedQty.toFixed(0).padStart(2, "0")}</td>
-              <td className={`${cellBorder} p-1 text-center`}>{it.uom ?? "NOS"}</td>
-              <td className={`${cellBorder} p-1 text-right tabular-nums`}>{Number(it.unit_rate).toFixed(2)}</td>
-              <td className={`${cellBorder} p-1 text-right tabular-nums`}>{(lineTotals[it.id] ?? Number(it.total_amount)).toFixed(2)}</td>
-            </tr>
+              <tr key={it.id}>
+                <td className={`${cellBorder} p-1 text-center`}>{it.sr_no}</td>
+                <td className={`${cellBorder} p-1 text-center`}>{it.hsn_code ?? ""}</td>
+                <td className={`${cellBorder} p-1`}>
+                  {it.description}
+                  {rejected > 0 && (
+                    <span className="text-[10px] italic"> (Delivered {Number(it.quantity)}, rejected {rejected})</span>
+                  )}
+                </td>
+                <td className={`${cellBorder} p-1 text-right tabular-nums`}>{billedQty.toFixed(0).padStart(2, "0")}</td>
+                <td className={`${cellBorder} p-1 text-center`}>{it.uom ?? "NOS"}</td>
+                <td className={`${cellBorder} p-1 text-right tabular-nums`}>{Number(it.unit_rate).toFixed(2)}</td>
+                <td className={`${cellBorder} p-1 text-right tabular-nums`}>{(lineTotals[it.id] ?? Number(it.total_amount)).toFixed(2)}</td>
+              </tr>
             );
           })}
           {/* filler rows */}
@@ -563,12 +569,12 @@ function PrintableInvoice({ invoice, items, company, typeLabel }: { invoice: any
             <>
               <tr>
                 <td className={`${cellBorder} p-1 w-[35%]`}>SGST</td>
-                <td className={`${cellBorder} p-1 text-center w-[10%]`}>{items[0]?.tax_pct ? `${Number(items[0].tax_pct)/2}%` : ""}</td>
+                <td className={`${cellBorder} p-1 text-center w-[10%]`}>{items[0]?.tax_pct ? `${Number(items[0].tax_pct) / 2}%` : ""}</td>
                 <td className={`${cellBorder} p-1 text-right tabular-nums`}>{totals.sgst.toFixed(2)}</td>
               </tr>
               <tr>
                 <td className={`${cellBorder} p-1`}>CGST</td>
-                <td className={`${cellBorder} p-1 text-center`}>{items[0]?.tax_pct ? `${Number(items[0].tax_pct)/2}%` : ""}</td>
+                <td className={`${cellBorder} p-1 text-center`}>{items[0]?.tax_pct ? `${Number(items[0].tax_pct) / 2}%` : ""}</td>
                 <td className={`${cellBorder} p-1 text-right tabular-nums`}>{totals.cgst.toFixed(2)}</td>
               </tr>
               <tr>

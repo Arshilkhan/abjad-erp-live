@@ -1,9 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildDocumentItemRows } from "./document-item-payload";
 import type { LineItem } from "./types";
+import type { SalesDocumentKind } from "@/lib/sales-documents";
 
 interface SaveDocumentArgs {
   supabase: SupabaseClient;
+  documentType: SalesDocumentKind;
   docTable: string;
   docItemsTable: string;
   payload: any;
@@ -21,6 +23,7 @@ interface SaveDocumentArgs {
 
 export async function saveDocument({
   supabase,
+  documentType,
   docTable,
   docItemsTable,
   payload,
@@ -58,6 +61,23 @@ export async function saveDocument({
 
     if (dErr) throw dErr;
   } else {
+    const { data: allowed, error: permissionError } =
+      await (supabase as any).rpc(
+        "can_perform_document_action",
+        {
+          _document_kind: documentType,
+          _action: "create",
+        }
+      );
+
+    if (permissionError) throw permissionError;
+
+    if (!allowed) {
+      throw new Error(
+        "You do not have permission to create this document."
+      );
+    }
+
     const slug =
       customerName
         .toLowerCase()
@@ -75,8 +95,10 @@ export async function saveDocument({
     let seq = 0;
 
     for (const row of existing ?? []) {
-      const m = seqRe.exec(row.invoice_number ?? "");
-      if (m) seq = Math.max(seq, Number(m[1]));
+      const match = seqRe.exec(row.invoice_number ?? "");
+      if (match) {
+        seq = Math.max(seq, Number(match[1]));
+      }
     }
 
     let inserted: any = null;
@@ -116,7 +138,8 @@ export async function saveDocument({
     }
 
     if (!inserted) {
-      throw lastErr ?? new Error("Could not generate a unique invoice number");
+      throw lastErr ??
+        new Error("Could not generate a unique invoice number");
     }
 
     invId = inserted.id;
@@ -126,7 +149,7 @@ export async function saveDocument({
   const rows = buildDocumentItemRows(
     items,
     invId,
-    isChallan,
+    isChallan
   );
 
   const { error: iErr } = await supabase

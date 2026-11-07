@@ -49,7 +49,7 @@ export function DocumentForm({
   const isTaxInvoice = formConfig.isTaxInvoice;
   const nav = useNavigate();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, canPerform } = useAuth();
   const isEdit = !!editId;
   const qc = useQueryClient();
 
@@ -265,6 +265,12 @@ export function DocumentForm({
 
   const save = useMutation({
     mutationFn: async (status: "draft" | "sent") => {
+      if (!isEdit && !canPerform(documentType, "create")) {
+        throw new Error(
+          `You do not have permission to create ${docCfg.label}.`
+        );
+      }
+
       const nameTyped = customerText.trim();
       if (!custCompany.trim()) throw new Error("Please enter a company name");
       if (settings?.mandatory_gst_number && !custGst.trim()) throw new Error("Customer GST Number is mandatory");
@@ -344,6 +350,7 @@ export function DocumentForm({
 
       const result = await saveDocument({
         supabase,
+        documentType,
         docTable,
         docItemsTable,
         payload,

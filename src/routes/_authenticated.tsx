@@ -1,3 +1,4 @@
+
 import { createFileRoute, Outlet, useNavigate, Link, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
@@ -20,30 +21,56 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 function AuthedLayout() {
-  const { user, loading, isAdmin, canAccess } = useAuth();
+  const { user, loading, isAdmin, canAccess, canPerform } = useAuth();
   const nav = useNavigate();
   const path = useRouterState({ select: (r) => r.location.pathname });
-  useEffect(() => { if (!loading && !user) nav({ to: "/auth" }); }, [user, loading, nav]);
+
+  useEffect(() => {
+    if (!loading && !user) nav({ to: "/auth" });
+  }, [user, loading, nav]);
 
   if (loading || !user) {
-    return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Loading…</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
+        Loading…
+      </div>
+    );
   }
 
   const matched = [...PANELS]
     .sort((a, b) => b.url.length - a.url.length)
     .find((p) => path === p.url || path.startsWith(p.url + "/"));
+
   const allowed = isAdmin || !matched || canAccess(matched.key);
+
+  // Check individual Create permissions for each document type.
+  const canCreateInvoice = canPerform("tax_invoice", "create");
+  const canCreateProforma = canPerform("proforma", "create");
+  const canCreateQuotation = canPerform("quotation", "create");
+  const canCreateChallan = canPerform("delivery_challan", "create");
+
+  // Purchase Orders retain their existing panel-access permission.
+  const canCreatePO = canAccess("purchases");
+
+  const showCreateMenu =
+    canCreateInvoice ||
+    canCreateProforma ||
+    canCreateQuotation ||
+    canCreateChallan ||
+    canCreatePO;
 
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-background">
         <AppSidebar />
+
         <SidebarInset className="flex flex-1 flex-col">
           <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b bg-card/80 px-4 backdrop-blur">
             <SidebarTrigger />
             <GlobalSearch />
+
             <div className="ml-auto flex shrink-0 items-center gap-1">
-              {(canAccess("invoices") || canAccess("quotations") || canAccess("challans") || canAccess("purchases")) && (
+              {showCreateMenu && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button size="sm" aria-label="Create document">
@@ -52,30 +79,45 @@ function AuthedLayout() {
                       <ChevronDown className="ml-1 h-3.5 w-3.5" />
                     </Button>
                   </DropdownMenuTrigger>
+
                   <DropdownMenuContent align="end" className="w-52">
-                    {canAccess("invoices") && (
+                    {canCreateInvoice && (
                       <DropdownMenuItem asChild>
-                        <Link to="/invoices/new"><FileText /> New Invoice</Link>
+                        <Link to="/invoices/new">
+                          <FileText /> New Invoice
+                        </Link>
                       </DropdownMenuItem>
                     )}
-                    {canAccess("invoices") && (
+
+                    {canCreateProforma && (
                       <DropdownMenuItem asChild>
-                        <Link to="/proformas/new"><FileText /> New Proforma</Link>
+                        <Link to="/proformas/new">
+                          <FileText /> New Proforma
+                        </Link>
                       </DropdownMenuItem>
                     )}
-                    {canAccess("quotations") && (
+
+                    {canCreateQuotation && (
                       <DropdownMenuItem asChild>
-                        <Link to="/quotations/new"><FileSpreadsheet /> New Quotation</Link>
+                        <Link to="/quotations/new">
+                          <FileSpreadsheet /> New Quotation
+                        </Link>
                       </DropdownMenuItem>
                     )}
-                    {canAccess("challans") && (
+
+                    {canCreateChallan && (
                       <DropdownMenuItem asChild>
-                        <Link to="/challans/new"><Truck /> New Challan</Link>
+                        <Link to="/challans/new">
+                          <Truck /> New Challan
+                        </Link>
                       </DropdownMenuItem>
                     )}
-                    {canAccess("purchases") && (
+
+                    {canCreatePO && (
                       <DropdownMenuItem asChild>
-                        <Link to="/purchases/new"><ShoppingCart /> New PO</Link>
+                        <Link to="/purchases/new">
+                          <ShoppingCart /> New PO
+                        </Link>
                       </DropdownMenuItem>
                     )}
                   </DropdownMenuContent>
@@ -83,6 +125,7 @@ function AuthedLayout() {
               )}
             </div>
           </header>
+
           <main className="flex-1 p-6">
             {allowed ? (
               <Outlet />

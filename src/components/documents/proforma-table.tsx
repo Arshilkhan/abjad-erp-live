@@ -1,6 +1,10 @@
 import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Pencil } from "lucide-react";
+import { Pencil, Ban } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { useAuth } from "@/lib/auth-context";
+import { supabase } from "@/integrations/supabase/client";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +26,9 @@ export function ProformaTable({
     rows: any[];
     isLoading?: boolean;
 }) {
+    const qc = useQueryClient();
+    const { canPerform } = useAuth();
+    const canCancel = canPerform("proforma", "cancel");
     const [sortField, setSortField] = useState<
         "proforma" | "customer" | "date" | "total" | null
     >(null);
@@ -29,13 +36,9 @@ export function ProformaTable({
     const [sortDirection, setSortDirection] =
         useState<"asc" | "desc">("asc");
 
-    const handleSort = (
-        field: "proforma" | "customer" | "date" | "total",
-    ) => {
+    const handleSort = (field: "proforma" | "customer" | "date" | "total") => {
         if (sortField === field) {
-            setSortDirection((prev) =>
-                prev === "asc" ? "desc" : "asc",
-            );
+            setSortDirection((prev) => prev === "asc" ? "desc" : "asc");
         } else {
             setSortField(field);
             setSortDirection("asc");
@@ -44,170 +47,104 @@ export function ProformaTable({
 
     const sortedRows = useMemo(() => {
         if (!sortField) return rows;
-
         return [...rows].sort((a, b) => {
             let comparison = 0;
-
             switch (sortField) {
                 case "proforma":
-                    comparison = String(
-                        a.invoice_number ?? "",
-                    ).localeCompare(
-                        String(b.invoice_number ?? ""),
-                        undefined,
-                        { numeric: true },
+                    comparison = String(a.invoice_number ?? "").localeCompare(
+                        String(b.invoice_number ?? ""), undefined, { numeric: true }
                     );
                     break;
-
                 case "customer":
-                    comparison = String(
-                        a.customer_name_snapshot ?? "",
-                    ).localeCompare(
-                        String(b.customer_name_snapshot ?? ""),
+                    comparison = String(a.customer_name_snapshot ?? "").localeCompare(
+                        String(b.customer_name_snapshot ?? "")
                     );
                     break;
-
                 case "date":
-                    comparison =
-                        new Date(a.invoice_date).getTime() -
-                        new Date(b.invoice_date).getTime();
+                    comparison = new Date(a.invoice_date).getTime() - new Date(b.invoice_date).getTime();
                     break;
-
                 case "total":
-                    comparison =
-                        Number(a.grand_total ?? 0) -
-                        Number(b.grand_total ?? 0);
+                    comparison = Number(a.grand_total ?? 0) - Number(b.grand_total ?? 0);
                     break;
             }
-
-            return sortDirection === "asc"
-                ? comparison
-                : -comparison;
+            return sortDirection === "asc" ? comparison : -comparison;
         });
     }, [rows, sortField, sortDirection]);
+
+    const cancelDocument = async (row: any) => {
+        const documentNumber = row.invoice_number ?? row.invoice_number ?? "this document";
+        if (!window.confirm(`Cancel this proforma invoice (${documentNumber})?`)) return;
+
+        const { error } = await supabase
+            .from("performa")
+            .update({ status: "cancelled" })
+            .eq("id", row.id);
+
+        if (error) {
+            toast.error(error.message);
+            return;
+        }
+
+        toast.success("Proforma Invoice cancelled");
+        await qc.invalidateQueries();
+    };
 
     return (
         <Table>
             <TableHeader>
                 <TableRow>
-                    <TableHead
-                        className="cursor-pointer select-none"
-                        onClick={() => handleSort("proforma")}
-                    >
-                        Proforma #
-                    </TableHead>
-
-                    <TableHead
-                        className="cursor-pointer select-none"
-                        onClick={() => handleSort("customer")}
-                    >
-                        Customer
-                    </TableHead>
-
-                    <TableHead
-                        className="cursor-pointer select-none"
-                        onClick={() => handleSort("date")}
-                    >
-                        Date
-                    </TableHead>
-
-                    <TableHead
-                        className="cursor-pointer select-none text-right"
-                        onClick={() => handleSort("total")}
-                    >
-                        Total
-                    </TableHead>
-
+                    <TableHead className="cursor-pointer select-none" onClick={() => handleSort("proforma")}>Proforma #</TableHead>
+                    <TableHead className="cursor-pointer select-none" onClick={() => handleSort("customer")}>Customer</TableHead>
+                    <TableHead className="cursor-pointer select-none" onClick={() => handleSort("date")}>Date</TableHead>
+                    <TableHead className="cursor-pointer select-none text-right" onClick={() => handleSort("total")}>Total</TableHead>
                     <TableHead>Status</TableHead>
-
-                    <TableHead className="w-24 text-right">
-                        Actions
-                    </TableHead>
+                    <TableHead className="w-24 text-right">Actions</TableHead>
                 </TableRow>
             </TableHeader>
-
             <TableBody>
                 {isLoading && (
                     <TableRow>
-                        <TableCell
-                            colSpan={6}
-                            className="py-8 text-center text-muted-foreground"
-                        >
-                            Loading…
-                        </TableCell>
+                        <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">Loading…</TableCell>
                     </TableRow>
                 )}
-
                 {!isLoading && rows.length === 0 && (
                     <TableRow>
-                        <TableCell
-                            colSpan={6}
-                            className="py-10 text-center text-muted-foreground"
-                        >
-                            No proforma invoices here yet.{" "}
-                            <Link
-                                to="/invoices/new"
-                                search={{ kind: "proforma" }}
-                                className="text-primary hover:underline"
-                            >
-                                Create one
-                            </Link>.
+                        <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                            No proforma invoices here yet.
+                            <Link to="/invoices/new" search={{ kind: "proforma" }} className="text-primary hover:underline">Create one</Link>.
                         </TableCell>
                     </TableRow>
                 )}
-
                 {sortedRows.map((r: any) => (
-                    <TableRow
-                        key={r.id}
-                        className="hover:bg-muted/40"
-                    >
+                    <TableRow key={r.id} className={`hover:bg-muted/40 ${r.status === "cancelled" ? "opacity-60" : ""}`}>
                         <TableCell className="font-mono text-sm font-medium">
-                            <Link
-                                to="/invoices/$id"
-                                params={{ id: r.id }}
-                                search={{ kind: "proforma" }}
-                                className="text-primary hover:underline"
-                            >
+                            <Link to="/invoices/$id" params={{ id: r.id }} search={{ kind: "proforma" }} className="text-primary hover:underline">
                                 {billNo(r.invoice_number)}
                             </Link>
                         </TableCell>
-
+                        <TableCell>{r.customer_name_snapshot ?? "—"}</TableCell>
+                        <TableCell>{formatDate(r.invoice_date)}</TableCell>
+                        <TableCell className="text-right tabular-nums font-semibold">{formatINR(r.grand_total)}</TableCell>
                         <TableCell>
-                            {r.customer_name_snapshot ?? "—"}
+                            <Badge variant="outline" className="text-[10px] font-medium uppercase">{r.status}</Badge>
                         </TableCell>
-
-                        <TableCell>
-                            {formatDate(r.invoice_date)}
-                        </TableCell>
-
-                        <TableCell className="text-right tabular-nums font-semibold">
-                            {formatINR(r.grand_total)}
-                        </TableCell>
-
-                        <TableCell>
-                            <Badge
-                                variant="outline"
-                                className="text-[10px] font-medium uppercase"
-                            >
-                                {r.status}
-                            </Badge>
-                        </TableCell>
-
                         <TableCell className="text-right">
-                            <Button
-                                size="icon"
-                                variant="ghost"
-                                asChild
-                                title="Edit"
-                            >
-                                <Link
-                                    to="/invoices/$id/edit"
-                                    params={{ id: r.id }}
-                                    search={{ kind: "proforma" }}
-                                >
-                                    <Pencil className="h-3.5 w-3.5" />
-                                </Link>
-                            </Button>
+                            <div className="flex justify-end gap-1">
+                                {r.status !== "cancelled" && (
+                                    <>
+                                        <Button size="icon" variant="ghost" asChild title="Edit">
+                                            <Link to="/invoices/$id/edit" params={{ id: r.id }} search={{ kind: "proforma" }}>
+                                                <Pencil className="h-3.5 w-3.5" />
+                                            </Link>
+                                        </Button>
+                                        {canCancel && (
+                                            <Button size="icon" variant="ghost" title="Cancel Proforma Invoice" onClick={() => cancelDocument(r)}>
+                                                <Ban className="h-3.5 w-3.5 text-destructive" />
+                                            </Button>
+                                        )}
+                                    </>
+                                )}
+                            </div>
                         </TableCell>
                     </TableRow>
                 ))}

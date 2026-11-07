@@ -16,6 +16,7 @@ import {
 
 import { formatINR, formatDate, billNo } from "@/lib/format";
 import { CancelInvoiceDialog } from "@/components/cancel-invoice-dialog";
+import { useAuth } from "@/lib/auth-context";
 
 export const taxInvoiceStatusStyles: Record<string, string> = {
     paid: "bg-[color:oklch(0.92_0.06_155)] text-[color:oklch(0.35_0.14_155)] border-transparent",
@@ -35,6 +36,9 @@ export function TaxInvoiceTable({
     isLoading?: boolean;
 }) {
     const qc = useQueryClient();
+    const { canPerform } = useAuth();
+    const canCancelTaxInvoice = canPerform("tax_invoice", "cancel");
+    const canCreateTaxInvoice = canPerform("tax_invoice", "create");
 
     const [sortField, setSortField] = useState<SortField | null>(() => {
         const saved = localStorage.getItem("abjad-erp-tax-invoice-sort-field");
@@ -187,14 +191,19 @@ export function TaxInvoiceTable({
                             colSpan={6}
                             className="py-10 text-center text-muted-foreground"
                         >
-                            No tax invoices here yet.{" "}
-                            <Link
-                                to="/invoices/new"
-                                search={{ kind: "tax_invoice" }}
-                                className="text-primary hover:underline"
-                            >
-                                Create one
-                            </Link>.
+                            No tax invoices here yet.
+                            {canCreateTaxInvoice && (
+                                <>
+                                    {" "}
+                                    <Link
+                                        to="/invoices/new"
+                                        search={{ kind: "tax_invoice" }}
+                                        className="text-primary hover:underline"
+                                    >
+                                        Create one
+                                    </Link>.
+                                </>
+                            )}
                         </TableCell>
                     </TableRow>
                 )}
@@ -202,11 +211,10 @@ export function TaxInvoiceTable({
                 {sortedRows.map((r: any) => (
                     <TableRow
                         key={r.id}
-                        className={`hover:bg-muted/40 ${
-                            r.status === "cancelled"
+                        className={`hover:bg-muted/40 ${r.status === "cancelled"
                                 ? "opacity-60"
                                 : ""
-                        }`}
+                            }`}
                     >
                         <TableCell className="font-mono text-sm font-medium">
                             <Link
@@ -243,9 +251,8 @@ export function TaxInvoiceTable({
                         <TableCell>
                             <Badge
                                 variant="outline"
-                                className={`text-[10px] font-medium uppercase ${
-                                    taxInvoiceStatusStyles[r.status] ?? ""
-                                }`}
+                                className={`text-[10px] font-medium uppercase ${taxInvoiceStatusStyles[r.status] ?? ""
+                                    }`}
                             >
                                 {r.status}
                             </Badge>
@@ -272,24 +279,26 @@ export function TaxInvoiceTable({
                                             </Link>
                                         </Button>
 
-                                        <CancelInvoiceDialog
-                                            invoiceId={r.id}
-                                            invoiceNumber={r.invoice_number}
-                                            onCancelled={() =>
-                                                qc.invalidateQueries({
-                                                    queryKey: ["invoices"],
-                                                })
-                                            }
-                                            trigger={
-                                                <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    title="Cancel invoice"
-                                                >
-                                                    <Ban className="h-3.5 w-3.5 text-destructive" />
-                                                </Button>
-                                            }
-                                        />
+                                        {canCancelTaxInvoice && (
+                                            <CancelInvoiceDialog
+                                                invoiceId={r.id}
+                                                invoiceNumber={r.invoice_number}
+                                                onCancelled={() =>
+                                                    qc.invalidateQueries({
+                                                        queryKey: ["invoices"],
+                                                    })
+                                                }
+                                                trigger={
+                                                    <Button
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        title="Cancel invoice"
+                                                    >
+                                                        <Ban className="h-3.5 w-3.5 text-destructive" />
+                                                    </Button>
+                                                }
+                                            />
+                                        )}
                                     </>
                                 )}
                             </div>
