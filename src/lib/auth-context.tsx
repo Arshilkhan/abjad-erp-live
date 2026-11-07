@@ -138,15 +138,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       if (!active) return;
 
+      // Always keep the latest authentication session and user.
       setSession(s);
       setUser(s?.user ?? null);
 
+      // A token refresh is not a new login.
+      // Do not reload permissions or show the full-page Loading screen.
+      if (event === "TOKEN_REFRESHED") return;
+
       if (s?.user) {
         setLoading(true);
+
         setTimeout(() => {
           if (!active) return;
 
@@ -168,6 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     });
+
 
     supabase.auth.getSession().then(async ({ data, error }) => {
       if (!active) return;
