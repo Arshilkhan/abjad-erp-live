@@ -70,30 +70,68 @@ export function InvoiceConfigurationTab() {
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full table-fixed text-sm">
             <thead className="border-b bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="p-2 text-left">Feature</th>
-                <th className="p-2 text-center">Enabled</th>
-                <th className="p-2 text-center">Mandatory</th>
-                <th className="p-2 text-center">Visible</th>
-                <th className="p-2 text-center">Editable</th>
-                <th className="p-2 text-center">Read Only</th>
+                <th className="w-[30%] p-3 text-left align-middle">Feature</th>
+                <th className="w-[14%] p-3 text-center align-middle">Enabled</th>
+                <th className="w-[14%] p-3 text-center align-middle">Mandatory</th>
+                <th className="w-[14%] p-3 text-center align-middle">Visible</th>
+                <th className="w-[14%] p-3 text-center align-middle">Editable</th>
+                <th className="w-[14%] p-3 text-center align-middle">Read Only</th>
               </tr>
             </thead>
+
             <tbody>
-              {isLoading && <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">Loading…</td></tr>}
+              {isLoading && (
+                <tr>
+                  <td colSpan={6} className="p-6 text-center text-muted-foreground">
+                    Loading...
+                  </td>
+                </tr>
+              )}
+
               {rows.map((r) => (
-                <tr key={r.id} className="border-b last:border-b-0 hover:bg-muted/20">
-                  <td className="p-2 font-medium">{r.label}</td>
-                  <Cell checked={r.enabled} onChange={(v) => toggle(r, { enabled: v })} />
-                  <Cell checked={r.is_mandatory} onChange={(v) => toggle(r, { is_mandatory: v })} disabled={!r.enabled} />
-                  <Cell checked={r.is_visible} onChange={(v) => toggle(r, { is_visible: v })} disabled={!r.enabled || r.is_mandatory} />
-                  <Cell checked={r.is_editable} onChange={(v) => toggle(r, { is_editable: v })} disabled={!r.enabled} />
-                  <Cell checked={r.is_read_only} onChange={(v) => toggle(r, { is_read_only: v })} disabled={!r.enabled} />
+                <tr
+                  key={r.id}
+                  className="h-11 border-b last:border-b-0 hover:bg-muted/20"
+                >
+                  <td className="w-[30%] px-3 py-2 text-left align-middle font-medium">
+                    {r.label}
+                  </td>
+
+                  <Cell
+                    checked={r.enabled}
+                    onChange={(v) => toggle(r, { enabled: v })}
+                  />
+
+                  <Cell
+                    checked={r.is_mandatory}
+                    onChange={(v) => toggle(r, { is_mandatory: v })}
+                    disabled={!r.enabled}
+                  />
+
+                  <Cell
+                    checked={r.is_visible}
+                    onChange={(v) => toggle(r, { is_visible: v })}
+                    disabled={!r.enabled || r.is_mandatory}
+                  />
+
+                  <Cell
+                    checked={r.is_editable}
+                    onChange={(v) => toggle(r, { is_editable: v })}
+                    disabled={!r.enabled}
+                  />
+
+                  <Cell
+                    checked={r.is_read_only}
+                    onChange={(v) => toggle(r, { is_read_only: v })}
+                    disabled={!r.enabled}
+                  />
                 </tr>
               ))}
             </tbody>
+
           </table>
         </div>
       </CardContent>
@@ -101,10 +139,26 @@ export function InvoiceConfigurationTab() {
   );
 }
 
-function Cell({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+
+function Cell({
+  checked,
+  onChange,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
   return (
-    <td className="p-2 text-center">
-      <Checkbox checked={checked} onCheckedChange={(v) => onChange(!!v)} disabled={disabled} />
+    <td className="w-[14%] px-3 py-2 align-middle">
+      <div className="flex h-full w-full items-center justify-center">
+        <Checkbox
+          checked={checked}
+          onCheckedChange={(v) => onChange(!!v)}
+          disabled={disabled}
+          className="shrink-0"
+        />
+      </div>
     </td>
   );
 }
