@@ -42,15 +42,43 @@ function CompanyProfile() {
   const [state, setState] = useState<any>({});
   useEffect(() => { if (data) setState(data); }, [data]);
 
+
   const save = useMutation({
     mutationFn: async () => {
       const { id, created_at, updated_at, ...rest } = state;
-      const { error } = await supabase.from("company_profile").update(rest).eq("id", id);
-      if (error) throw error;
+
+      if (!rest.name?.trim()) {
+        throw new Error("Please enter the company name.");
+      }
+
+      if (id) {
+        // Existing company profile: update
+        const { error } = await supabase
+          .from("company_profile")
+          .update(rest)
+          .eq("id", id);
+
+        if (error) throw error;
+      } else {
+        // First company profile: insert
+        const { error } = await supabase
+          .from("company_profile")
+          .insert(rest);
+
+        if (error) throw error;
+      }
     },
-    onSuccess: () => { toast.success("Company profile updated"); qc.invalidateQueries({ queryKey: ["company"] }); },
-    onError: (e: any) => toast.error(e.message),
+
+    onSuccess: () => {
+      toast.success("Company profile saved successfully");
+      qc.invalidateQueries({ queryKey: ["company"] });
+    },
+
+    onError: (e: any) => {
+      toast.error(e.message);
+    },
   });
+
 
   const setField = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setState((s: any) => ({ ...s, [k]: e.target.value }));
