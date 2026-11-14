@@ -7,6 +7,7 @@ interface PdfImportData {
   footer_contact_mobiles?: string[];
   email?: string;
   gst_number?: string;
+  invoice_number?: string;
   invoice_date?: string;
   work_order_number?: string;
   freight?: number;
@@ -48,6 +49,7 @@ interface ImportPdfArgs {
   setCustMobile: Dispatch<SetStateAction<string>>;
   setCustEmail: Dispatch<SetStateAction<string>>;
   setCustGst: Dispatch<SetStateAction<string>>;
+  setDocumentNumber: Dispatch<SetStateAction<string>>;
   setInvoiceDate: Dispatch<SetStateAction<string>>;
   setWorkOrder: Dispatch<SetStateAction<string>>;
   setFreight: Dispatch<SetStateAction<number>>;
@@ -72,6 +74,7 @@ export async function importInvoicePdf({
   customers,
   products,
   isTaxInvoice,
+  setDocumentNumber,
   setPdfName,
   setPdfImported,
   setExtracting,
@@ -163,6 +166,9 @@ export async function importInvoicePdf({
     if (d.delivery_mode) setDeliveryMode(d.delivery_mode);
     if (d.payment_terms) setPaymentTerms(d.payment_terms);
     if (d.notes) setNotes(d.notes);
+    if (d.invoice_number) {
+      setDocumentNumber(d.invoice_number);
+    }
 
     if (d.items.length) {
       setItems(

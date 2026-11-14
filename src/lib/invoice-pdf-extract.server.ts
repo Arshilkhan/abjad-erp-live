@@ -17,6 +17,7 @@ Return ONLY a JSON object (no markdown fences) with exactly this shape:
   "email": string,
   "gst_number": string,
   "footer_contact_person": string,
+  "invoice_number": string,
   "invoice_date": "YYYY-MM-DD",
   "po_number": string,
   "po_date": "YYYY-MM-DD",
@@ -57,7 +58,11 @@ Rules:
 - tax_pct per item = SGST% + CGST%, or IGST% when IGST is charged (e.g. 9+9 -> 18).
 - Include EVERY line item row, in printed order.
 - Use "" for unknown text and 0 for unknown numbers. Never invent data.
-- notes: only genuine remarks printed on the document, otherwise "".
+- notes: only genuine remarks printed on the document, otherwise 
+- Extract the seller-issued invoice number into invoice_number.
+- Do not confuse the invoice number with the PO number, challan number, or work order number.
+- Preserve the invoice number exactly as printed, including prefixes, slashes, hyphens, and letters.
+- If the invoice number is not present, return an empty string."".
 `;
 
 export type ExtractedItem = {
@@ -77,6 +82,7 @@ export type ExtractedInvoice = {
   email: string;
   gst_number: string;
   footer_contact_person: string;
+  invoice_number: string;
   invoice_date: string;
   po_number: string;
   po_date: string;
@@ -117,6 +123,7 @@ function normalize(raw: any): ExtractedInvoice {
     email: str(raw?.email),
     gst_number: str(raw?.gst_number).toUpperCase(),
     footer_contact_person: str(raw?.footer_contact_person),
+    invoice_number: str(raw?.invoice_number),
     invoice_date: date(raw?.invoice_date),
     po_number: str(raw?.po_number),
     po_date: date(raw?.po_date),

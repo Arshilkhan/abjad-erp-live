@@ -438,6 +438,7 @@ export function DocumentForm({
       customers,
       products,
       isTaxInvoice,
+      setDocumentNumber,
       setPdfName,
       setPdfImported,
       setExtracting,
