@@ -230,7 +230,16 @@ export async function buildInvoicePdf(
   addrLines.forEach((l, i) => draw(l, cx[1]! + 3, y - 13 - i * 12, 9.5))
   const rightX = cx[2]!
   const rightW = cw[2]! + cw[3]! + cw[4]! + cw[5]!
-  cell(rightX, y, rightW, addrH, '')
+  if (String(invoice['invoice_type']) === 'tax_invoice') {
+    const metaRowH = addrH / 2
+    const metaLabelW = rightW * 0.32
+    cell(rightX, y, metaLabelW, metaRowH, 'PO No.', { bold: true })
+    cell(rightX + metaLabelW, y, rightW - metaLabelW, metaRowH, invoice['po_number'] ?? '')
+    cell(rightX, y - metaRowH, metaLabelW, metaRowH, 'PO DATE', { bold: true })
+    cell(rightX + metaLabelW, y - metaRowH, rightW - metaLabelW, metaRowH, invoice['po_date'] ? formatDate(invoice['po_date']) : '')
+  } else {
+    cell(rightX, y, rightW, addrH, '')
+  }
   y -= addrH
 
   // ---------- BUYER + COMPANY DETAILS ----------

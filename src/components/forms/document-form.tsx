@@ -66,6 +66,8 @@ export function DocumentForm({
   const [invoiceType, setInvoiceType] = useState<string>(documentType);
   const [challanNumber, setChallanNumber] = useState("");
   const [documentNumber, setDocumentNumber] = useState("");
+  const [poNumber, setPoNumber] = useState("");
+  const [poDate, setPoDate] = useState("");
   const [challanDates, setChallanDates] = useState<string[]>([]);
   const [challanDateInput, setChallanDateInput] = useState("");
 
@@ -146,6 +148,10 @@ export function DocumentForm({
     setInvoiceDate(inv.invoice_date);
     if (!isChallan) {
       setDocumentNumber(inv.invoice_number ?? "");
+    }
+    if (isTaxInvoice) {
+      setPoNumber((inv as any).po_number ?? "");
+      setPoDate((inv as any).po_date ?? "");
     }
     if (isChallan) {
       setChallanNumber((inv as any).challan_number ?? "");
@@ -340,6 +346,8 @@ export function DocumentForm({
 
         challanNumber,
         documentNumber,
+        poNumber,
+        poDate,
         challanDates,
         movementReason,
         transporterName,
@@ -528,6 +536,10 @@ export function DocumentForm({
           handlePdf={handlePdf}
           documentNumber={documentNumber}
           setDocumentNumber={setDocumentNumber}
+          poNumber={poNumber}
+          setPoNumber={setPoNumber}
+          poDate={poDate}
+          setPoDate={setPoDate}
           documentNumberLabel={
             documentType === "tax_invoice"
               ? "Invoice Number"

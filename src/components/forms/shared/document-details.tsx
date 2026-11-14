@@ -41,6 +41,10 @@ interface DocumentDetailsProps {
   documentNumber: string;
   setDocumentNumber: (value: string) => void;
   documentNumberLabel: string;
+  poNumber: string;
+  setPoNumber: (value: string) => void;
+  poDate: string;
+  setPoDate: (value: string) => void;
   customers: Customer[];
   settings?: InvoiceSettings | null;
   customerId: string;
@@ -89,6 +93,10 @@ export function DocumentDetails({
   documentNumber,
   setDocumentNumber,
   documentNumberLabel,
+  poNumber,
+  setPoNumber,
+  poDate,
+  setPoDate,
   customers,
   settings,
 
@@ -298,6 +306,27 @@ export function DocumentDetails({
               onChange={(e) => setInvoiceDate(e.target.value)}
             />
           </div>
+
+          {isTaxInvoice && !isChallan && (
+            <>
+              <div className="space-y-1.5">
+                <Label className="text-xs">PO No.</Label>
+                <Input
+                  value={poNumber}
+                  onChange={(e) => setPoNumber(e.target.value)}
+                  placeholder="Enter purchase order number"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">PO DATE</Label>
+                <Input
+                  type="date"
+                  value={poDate}
+                  onChange={(e) => setPoDate(e.target.value)}
+                />
+              </div>
+            </>
+          )}
 
           {isChallan && (
             <div className="col-span-2 space-y-1.5">
