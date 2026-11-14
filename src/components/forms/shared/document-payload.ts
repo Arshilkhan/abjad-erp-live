@@ -1,6 +1,7 @@
 import { amountInWords } from "@/lib/format";
 
 interface BuildDocumentPayloadArgs {
+    documentNumber: string;
     invoiceType: string;
     invoiceDate: string;
     customerId: string;
@@ -43,6 +44,7 @@ interface BuildDocumentPayloadArgs {
 }
 
 export function buildDocumentPayload({
+    documentNumber,
     invoiceType,
     invoiceDate,
     customerId,
@@ -90,6 +92,12 @@ export function buildDocumentPayload({
         notes: notes || null,
         status,
     };
+
+    // Manual official numbering applies only to Tax Invoices, Proforma Invoices,
+    // and Quotations. Challan numbering and payload behaviour remain unchanged.
+    if (!isChallan) {
+        payload.invoice_number = documentNumber.trim();
+    }
 
     if (isChallan) {
         Object.assign(payload, {

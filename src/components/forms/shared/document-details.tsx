@@ -38,6 +38,9 @@ interface DocumentDetailsProps {
   isTaxInvoice: boolean;
   isIGST: boolean;
   docLabel: string;
+  documentNumber: string;
+  setDocumentNumber: (value: string) => void;
+  documentNumberLabel: string;
   customers: Customer[];
   settings?: InvoiceSettings | null;
   customerId: string;
@@ -83,6 +86,9 @@ export function DocumentDetails({
   isTaxInvoice,
   isIGST,
   docLabel,
+  documentNumber,
+  setDocumentNumber,
+  documentNumberLabel,
   customers,
   settings,
 
@@ -180,6 +186,24 @@ export function DocumentDetails({
                       : `Could not import ${pdfName}. Choose another PDF to try again.`}
                 </span>
               </div>
+            </div>
+          )}
+
+          {!isChallan && (
+            <div className="col-span-2 space-y-1.5">
+              <Label className="text-sm font-semibold">
+                {documentNumberLabel} *
+              </Label>
+              <Input
+                value={documentNumber}
+                onChange={(e) => setDocumentNumber(e.target.value)}
+                placeholder="e.g. AEW/INV/2026-27/001"
+                className="font-mono"
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter the official document number. It must be unique within this document type.
+              </p>
             </div>
           )}
 

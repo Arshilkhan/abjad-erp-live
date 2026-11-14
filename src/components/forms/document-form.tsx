@@ -65,6 +65,7 @@ export function DocumentForm({
   const [productTexts, setProductTexts] = useState<string[]>([""]);
   const [invoiceType, setInvoiceType] = useState<string>(documentType);
   const [challanNumber, setChallanNumber] = useState("");
+  const [documentNumber, setDocumentNumber] = useState("");
   const [challanDates, setChallanDates] = useState<string[]>([]);
   const [challanDateInput, setChallanDateInput] = useState("");
 
@@ -143,6 +144,9 @@ export function DocumentForm({
     setCustomerText(inv.customer_name_snapshot ?? "");
     setInvoiceType(documentType);
     setInvoiceDate(inv.invoice_date);
+    if (!isChallan) {
+      setDocumentNumber(inv.invoice_number ?? "");
+    }
     if (isChallan) {
       setChallanNumber((inv as any).challan_number ?? "");
       setChallanDates(
@@ -276,6 +280,9 @@ export function DocumentForm({
       if (settings?.mandatory_gst_number && !custGst.trim()) throw new Error("Customer GST Number is mandatory");
       if (isChallan && settings?.mandatory_challan_number && !challanNumber)
         throw new Error("Challan Number is mandatory");
+      if (!isChallan && !documentNumber.trim()) {
+        throw new Error(`${docCfg.label} Number is mandatory`);
+      }
 
       const requireCharge = (key: string, val: number) => {
         const c = cfg(key);
@@ -332,6 +339,7 @@ export function DocumentForm({
         isIGST,
 
         challanNumber,
+        documentNumber,
         challanDates,
         movementReason,
         transporterName,
@@ -518,6 +526,15 @@ export function DocumentForm({
           setChallanDates={setChallanDates}
           addChallanDate={addChallanDate}
           handlePdf={handlePdf}
+          documentNumber={documentNumber}
+          setDocumentNumber={setDocumentNumber}
+          documentNumberLabel={
+            documentType === "tax_invoice"
+              ? "Invoice Number"
+              : documentType === "proforma"
+                ? "Proforma Invoice Number"
+                : "Quotation Number"
+          }
         />
       }
       items={
