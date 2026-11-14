@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 
 interface PdfImportData {
   customer_name?: string;
+  customer_address?: string;
   company_name?: string;
   mobile?: string;
   footer_contact_mobiles?: string[];
@@ -41,6 +42,7 @@ interface ImportPdfArgs {
   products: any[];
   isTaxInvoice: boolean;
   setPdfName: Dispatch<SetStateAction<string>>;
+  setCustAddress: Dispatch<SetStateAction<string>>;
   setPdfImported: Dispatch<SetStateAction<boolean>>;
   setExtracting: Dispatch<SetStateAction<boolean>>;
   setCustomerId: Dispatch<SetStateAction<string>>;
@@ -75,6 +77,7 @@ export async function importInvoicePdf({
   products,
   isTaxInvoice,
   setDocumentNumber,
+  setCustAddress,
   setPdfName,
   setPdfImported,
   setExtracting,
@@ -168,6 +171,9 @@ export async function importInvoicePdf({
     if (d.notes) setNotes(d.notes);
     if (d.invoice_number) {
       setDocumentNumber(d.invoice_number);
+    }
+    if (d.customer_address) {
+      setCustAddress(d.customer_address);
     }
 
     if (d.items.length) {

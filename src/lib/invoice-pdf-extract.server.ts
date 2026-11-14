@@ -12,6 +12,7 @@ Return ONLY a JSON object (no markdown fences) with exactly this shape:
 
 {
   "customer_name": string,
+  "customer_address": string,
   "company_name": string,
   "contact_person": string,
   "email": string,
@@ -62,7 +63,14 @@ Rules:
 - Extract the seller-issued invoice number into invoice_number.
 - Do not confuse the invoice number with the PO number, challan number, or work order number.
 - Preserve the invoice number exactly as printed, including prefixes, slashes, hyphens, and letters.
-- If the invoice number is not present, return an empty string."".
+- If the invoice number is not present, return an empty string.
+- Extract customer_address from the Address field/row belonging to the buyer.
+- The customer address is printed beside or immediately below the Address label in the customer details section.
+- Do NOT extract the seller's registered address, office address, or company-header address.
+- Do NOT use the seller's address as the customer address.
+- Preserve the complete customer address, including plot/flat number, building, street, area, city, state, and PIN code when printed.
+- Preserve meaningful address separators and line breaks where possible.
+- If the buyer's address is not present, return an empty string."".
 `;
 
 export type ExtractedItem = {
@@ -77,6 +85,7 @@ export type ExtractedItem = {
 
 export type ExtractedInvoice = {
   customer_name: string;
+  customer_address: string;
   company_name: string;
   contact_person: string;
   email: string;
@@ -117,6 +126,7 @@ function normalize(raw: any): ExtractedInvoice {
 
   return {
     customer_name: str(raw?.customer_name),
+    customer_address: str(raw?.customer_address),
     company_name:
       str(raw?.customer_name) || str(raw?.company_name),
     contact_person: str(raw?.contact_person),
