@@ -431,6 +431,8 @@ export function DocumentForm({
 
   const handlePdf = async (file: File) => {
     await importInvoicePdf({
+      setPoNumber,
+      setPoDate,
       file,
       runExtract,
       customers,

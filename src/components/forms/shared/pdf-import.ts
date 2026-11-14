@@ -24,11 +24,18 @@ interface PdfImportData {
     discount_pct?: number;
     tax_pct?: number;
   }>;
+  po_number?: string;
+  po_date?: string;
 }
 
 interface ImportPdfArgs {
   file: File;
-  runExtract: (args: { data: { fileData: string } }) => Promise<PdfImportData>;
+  runExtract: (args: {
+    data: {
+      fileData: string;
+      fileName: string;
+    };
+  }) => Promise<PdfImportData>;
   customers: any[];
   products: any[];
   isTaxInvoice: boolean;
@@ -51,6 +58,8 @@ interface ImportPdfArgs {
   setNotes: Dispatch<SetStateAction<string>>;
   setItems: Dispatch<SetStateAction<any[]>>;
   setProductTexts: Dispatch<SetStateAction<string[]>>;
+  setPoNumber: Dispatch<SetStateAction<string>>;
+  setPoDate: Dispatch<SetStateAction<string>>;
   toast: {
     error: (message: string) => unknown;
     success: (message: string) => unknown;
@@ -82,14 +91,19 @@ export async function importInvoicePdf({
   setNotes,
   setItems,
   setProductTexts,
+  setPoNumber,
+  setPoDate,
   toast,
 }: ImportPdfArgs) {
-  if (file.type !== "application/pdf") {
-    return toast.error("Please choose a PDF file.");
+
+  const extension = file.name.split(".").pop()?.toLowerCase();
+
+  if (!["pdf", "doc", "docx"].includes(extension ?? "")) {
+    return toast.error("Please choose a PDF, DOC, or DOCX file.");
   }
 
   if (file.size > 15 * 1024 * 1024) {
-    return toast.error("PDF is too large (max 15 MB).");
+    return toast.error("Document is too large (max 15 MB).");
   }
 
   setPdfName(file.name);
@@ -104,7 +118,12 @@ export async function importInvoicePdf({
       r.readAsDataURL(file);
     });
 
-    const d = await runExtract({ data: { fileData } });
+    const d = await runExtract({
+      data: {
+        fileData,
+        fileName: file.name,
+      },
+    });
 
     if (d.customer_name) {
       const customerName = d.customer_name.toLowerCase();
@@ -120,8 +139,8 @@ export async function importInvoicePdf({
     if (d.customer_name || d.company_name) {
       setCustCompany(d.customer_name || d.company_name || "");
     }
-
-    if (d.mobile) setCustMobile(d.mobile);
+    if (d.po_number) setPoNumber(d.po_number);
+    if (d.po_date) setPoDate(d.po_date);
 
     const footerMobiles =
       (d.footer_contact_mobiles ?? []).length > 0
@@ -173,10 +192,10 @@ export async function importInvoicePdf({
     setPdfImported(true);
 
     toast.success(
-      `Imported ${d.items.length} line item${d.items.length === 1 ? "" : "s"} from the PDF.`,
+      `Imported ${d.items.length} line item${d.items.length === 1 ? "" : "s"} from the document.`
     );
   } catch (e: any) {
-    toast.error(e?.message || "Could not read that PDF.");
+    toast.error(e?.message || "Could not read that document.");
   } finally {
     setExtracting(false);
   }

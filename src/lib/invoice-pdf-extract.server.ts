@@ -1,19 +1,22 @@
-// Server-only helper: sends an invoice PDF to the Lovable AI Gateway and
-// returns structured invoice fields for the Import Invoice form.
+
+import WordExtractor from "word-extractor";
+
+// Server-only helper for extracting invoice data from PDF and Word documents.
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
-const PROMPT = `You extract invoice data from a scanned/typed Indian GST invoice PDF.
+const PROMPT = `
+You extract invoice data from an Indian GST invoice or purchase-related document.
+
 Return ONLY a JSON object (no markdown fences) with exactly this shape:
+
 {
   "customer_name": string,
   "company_name": string,
   "contact_person": string,
-  "mobile": string,
   "email": string,
   "gst_number": string,
   "footer_contact_person": string,
-  "footer_contact_mobiles": string[],
   "invoice_date": "YYYY-MM-DD",
   "po_number": string,
   "po_date": "YYYY-MM-DD",
@@ -28,19 +31,34 @@ Return ONLY a JSON object (no markdown fences) with exactly this shape:
   "payment_terms": string,
   "notes": string,
   "items": [
-    { "hsn_code": string, "description": string, "quantity": number,
-      "uom": string, "unit_rate": number, "discount_pct": number, "tax_pct": number }
+    {
+      "hsn_code": string,
+      "description": string,
+      "quantity": number,
+      "uom": string,
+      "unit_rate": number,
+      "discount_pct": number,
+      "tax_pct": number
+    }
   ]
 }
+
 Rules:
-- The customer is the party being BILLED (buyer / "Customer Name" block), never the issuing seller company.
-- contact_person / mobile / email must belong to the buyer; leave empty when only the seller's contact is printed.
-- footer_contact_person / footer_contact_mobiles come from the "Contact Person" lines printed near the bottom of the invoice (usually below Delivery/Payment terms), regardless of whether they belong to the buyer or the seller. Always fill them when those lines are printed.
-- footer_contact_mobiles: one entry per phone number; numbers printed as "9324329320 / 8169691366" become two entries. Keep digits only per entry.
-- tax_pct per item = SGST% + CGST%, or the IGST% when IGST is charged (e.g. 9+9 -> 18).
+
+- The customer is the party being BILLED (buyer / Customer Name block), never the issuing seller company.
+- contact_person and email must belong to the buyer. Leave empty when only the seller's contact is printed.
+- footer_contact_person comes from the Contact Person lines printed near the bottom of the document.
+- Do NOT extract, return, or infer any mobile number or telephone number.
+- Extract the PURCHASE ORDER number into po_number.
+- Extract the PURCHASE ORDER date into po_date.
+- Do not confuse the PO number/date with the invoice number/date, challan number/date, or work order number.
+- If a purchase order number or date is not present, return an empty string. Never substitute another document's number or date.
+- All dates must be returned in YYYY-MM-DD format.
+- tax_pct per item = SGST% + CGST%, or IGST% when IGST is charged (e.g. 9+9 -> 18).
 - Include EVERY line item row, in printed order.
 - Use "" for unknown text and 0 for unknown numbers. Never invent data.
-- notes: only genuine remarks printed on the invoice, otherwise "".`;
+- notes: only genuine remarks printed on the document, otherwise "".
+`;
 
 export type ExtractedItem = {
   hsn_code: string;
@@ -56,11 +74,9 @@ export type ExtractedInvoice = {
   customer_name: string;
   company_name: string;
   contact_person: string;
-  mobile: string;
   email: string;
   gst_number: string;
   footer_contact_person: string;
-  footer_contact_mobiles: string[];
   invoice_date: string;
   po_number: string;
   po_date: string;
@@ -77,30 +93,30 @@ export type ExtractedInvoice = {
   items: ExtractedItem[];
 };
 
-const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+const str = (v: unknown) =>
+  typeof v === "string" ? v.trim() : "";
+
 const num = (v: unknown) => {
-  const n = Number(typeof v === "string" ? v.replace(/[^0-9.\-]/g, "") : v);
+  const n = Number(
+    typeof v === "string" ? v.replace(/[^0-9.-]/g, "") : v,
+  );
   return Number.isFinite(n) ? n : 0;
 };
-const date = (v: unknown) => (/^\d{4}-\d{2}-\d{2}$/.test(str(v)) ? str(v) : "");
+
+const date = (v: unknown) =>
+  /^\d{4}-\d{2}-\d{2}$/.test(str(v)) ? str(v) : "";
 
 function normalize(raw: any): ExtractedInvoice {
   const items = Array.isArray(raw?.items) ? raw.items : [];
+
   return {
     customer_name: str(raw?.customer_name),
-    // The buyer's company name is kept identical to the customer name; users can edit it manually.
-    company_name: str(raw?.customer_name) || str(raw?.company_name),
+    company_name:
+      str(raw?.customer_name) || str(raw?.company_name),
     contact_person: str(raw?.contact_person),
-    mobile: str(raw?.mobile),
     email: str(raw?.email),
     gst_number: str(raw?.gst_number).toUpperCase(),
     footer_contact_person: str(raw?.footer_contact_person),
-    footer_contact_mobiles: (Array.isArray(raw?.footer_contact_mobiles)
-      ? raw.footer_contact_mobiles
-      : String(raw?.footer_contact_mobiles ?? "").split(/[\/,;]+/)
-    )
-      .map((m: unknown) => str(m).replace(/[^0-9+]/g, ""))
-      .filter((m: string) => m.length >= 6),
     invoice_date: date(raw?.invoice_date),
     po_number: str(raw?.po_number),
     po_date: date(raw?.po_date),
@@ -130,83 +146,213 @@ function normalize(raw: any): ExtractedInvoice {
 
 function apiError(status: number, body: string): Error {
   let message = body;
+
   try {
-    message = JSON.parse(body)?.error?.message ?? JSON.parse(body)?.message ?? body;
-  } catch { /* keep raw body */ }
-  if (status === 429) return new Error("AI is rate limited right now — please retry in a moment.");
-  if (status === 402 || status === 403) return new Error(message || "AI usage is currently blocked right now.");
-  return new Error(`Could not read the PDF: ${message?.slice(0, 300) || status}`);
+    const parsed = JSON.parse(body);
+    message = parsed?.error?.message ?? parsed?.message ?? body;
+  } catch {
+    // Keep raw body.
+  }
+
+  if (status === 429) {
+    return new Error("AI is rate limited right now — please retry in a moment.");
+  }
+
+  if (status === 402 || status === 403) {
+    return new Error(
+      message || "AI usage is currently blocked right now.",
+    );
+  }
+
+  return new Error(
+    `Could not read the document: ${message?.slice(0, 300) || status}`,
+  );
 }
 
 function parseContent(content: string): ExtractedInvoice {
   const match = content.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error("The AI could not find invoice data in that PDF.");
+
+  if (!match) {
+    throw new Error("The AI could not find invoice data in that document.");
+  }
+
   return normalize(JSON.parse(match[0]));
 }
 
-async function extractWithGemini(fileData: string, apiKey: string): Promise<ExtractedInvoice> {
-  const base64 = fileData.includes(",") ? fileData.slice(fileData.indexOf(",") + 1) : fileData;
+async function extractWordText(
+  fileData: string,
+  extension: "doc" | "docx",
+): Promise<string> {
+  const base64 = fileData.slice(fileData.indexOf(",") + 1);
+  const buffer = Buffer.from(base64, "base64");
+
+  if (extension === "docx") {
+    const mammoth = await import("mammoth");
+
+    // HTML conversion retains table structure better than plain-text extraction.
+    const result = await mammoth.convertToHtml({ buffer });
+
+    if (!result.value.trim()) {
+      throw new Error("No readable text was found in this Word document.");
+    }
+
+    return result.value;
+  }
+
+  const extractor = new WordExtractor();
+  const document = await extractor.extract(buffer);
+
+  const sections = [
+    document.getHeaders({ includeFooters: true }),
+    document.getBody(),
+    document.getFooters(),
+  ];
+
+  const text = sections.filter(Boolean).join("\n\n").trim();
+
+  if (!text) {
+    throw new Error("No readable text was found in this Word document.");
+  }
+
+  return text;
+}
+
+async function extractWithGemini(
+  fileData: string,
+  apiKey: string,
+  wordText?: string,
+): Promise<ExtractedInvoice> {
   const model = process.env["GEMINI_MODEL"] || "gemini-3.6-flash";
+
+  const parts: any[] = [{ text: PROMPT }];
+
+  if (wordText) {
+    parts.push({
+      text: `Extract invoice information from the following Word document content:\n\n${wordText}`,
+    });
+  } else {
+    const base64 = fileData.slice(fileData.indexOf(",") + 1);
+
+    parts.push({
+      inline_data: {
+        mime_type: "application/pdf",
+        data: base64,
+      },
+    });
+  }
+
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
       body: JSON.stringify({
         contents: [
           {
             role: "user",
-            parts: [
-              { text: PROMPT },
-              { inline_data: { mime_type: "application/pdf", data: base64 } },
-            ],
+            parts,
           },
         ],
-        generationConfig: { responseMimeType: "application/json", temperature: 0 },
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0,
+        },
       }),
     },
   );
 
-  if (!res.ok) throw apiError(res.status, await res.text());
+  if (!res.ok) {
+    throw apiError(res.status, await res.text());
+  }
 
   const json: any = await res.json();
+
   const content: string = (json?.candidates?.[0]?.content?.parts ?? [])
     .map((p: any) => (typeof p?.text === "string" ? p.text : ""))
     .join("");
+
   return parseContent(content);
 }
 
-async function extractWithLovableGateway(fileData: string, apiKey: string): Promise<ExtractedInvoice> {
+async function extractWithLovableGateway(
+  fileData: string,
+  apiKey: string,
+  wordText?: string,
+): Promise<ExtractedInvoice> {
+  const content: any[] = [{ type: "text", text: PROMPT }];
+
+  if (wordText) {
+    content.push({
+      type: "text",
+      text: `Extract invoice information from the following Word document content:\n\n${wordText}`,
+    });
+  } else {
+    content.push({
+      type: "file",
+      file: {
+        filename: "invoice.pdf",
+        file_data: fileData,
+      },
+    });
+  }
+
   const res = await fetch(GATEWAY, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Lovable-API-Key": apiKey },
+    headers: {
+      "Content-Type": "application/json",
+      "Lovable-API-Key": apiKey,
+    },
     body: JSON.stringify({
       model: "google/gemini-3-flash",
       messages: [
         {
           role: "user",
-          content: [
-            { type: "text", text: PROMPT },
-            { type: "file", file: { filename: "invoice.pdf", file_data: fileData } },
-          ],
+          content,
         },
       ],
     }),
   });
 
-  if (!res.ok) throw apiError(res.status, await res.text());
+  if (!res.ok) {
+    throw apiError(res.status, await res.text());
+  }
 
   const json: any = await res.json();
+
   return parseContent(json?.choices?.[0]?.message?.content ?? "");
 }
 
-export async function extractInvoiceFromPdf(fileData: string): Promise<ExtractedInvoice> {
-  const geminiKey = process.env["GEMINI_API_KEY"] || process.env["GOOGLE_API_KEY"];
-  if (geminiKey) return await extractWithGemini(fileData, geminiKey);
+export async function extractInvoiceFromFile(
+  fileData: string,
+  fileName: string,
+): Promise<ExtractedInvoice> {
+  const extension = fileName.split(".").pop()?.toLowerCase();
+
+  let wordText: string | undefined;
+
+  if (extension === "doc" || extension === "docx") {
+    wordText = await extractWordText(fileData, extension);
+  } else if (extension !== "pdf") {
+    throw new Error("Please upload a PDF, DOC, or DOCX document.");
+  }
+
+  const geminiKey =
+    process.env["GEMINI_API_KEY"] || process.env["GOOGLE_API_KEY"];
+
+  if (geminiKey) {
+    return await extractWithGemini(fileData, geminiKey, wordText);
+  }
 
   const lovableKey = process.env["LOVABLE_API_KEY"];
-  if (lovableKey) return await extractWithLovableGateway(fileData, lovableKey);
 
-  throw new Error("AI is not configured: add GEMINI_API_KEY to this deployment's environment variables.");
+  if (lovableKey) {
+    return await extractWithLovableGateway(fileData, lovableKey, wordText);
+  }
+
+  throw new Error(
+    "AI is not configured: add GEMINI_API_KEY to this deployment's environment variables.",
+  );
 }
-

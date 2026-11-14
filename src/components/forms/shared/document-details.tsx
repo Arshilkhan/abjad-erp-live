@@ -149,7 +149,7 @@ export function DocumentDetails({
               <input
                 id="invoice-pdf"
                 type="file"
-                accept="application/pdf"
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 className="hidden"
                 disabled={extracting}
                 onChange={(e) => {
@@ -191,7 +191,7 @@ export function DocumentDetails({
                     ? `Reading ${pdfName}…`
                     : pdfImported
                       ? `${pdfName} imported. Review the details below before saving.`
-                      : `Could not import ${pdfName}. Choose another PDF to try again.`}
+                      : `Could not import ${pdfName}. Choose another document to try again.`}
                 </span>
               </div>
             </div>
