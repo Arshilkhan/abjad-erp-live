@@ -35,7 +35,7 @@ Return ONLY a JSON object (no markdown fences) with exactly this shape:
 Rules:
 - The customer is the party being BILLED (buyer / "Customer Name" block), never the issuing seller company.
 - contact_person / mobile / email must belong to the buyer; leave empty when only the seller's contact is printed.
-- footer_contact_person / footer_contact_mobiles come from the "Contact Person" and "Mob. No." lines printed near the bottom of the invoice (usually below Delivery/Payment terms), regardless of whether they belong to the buyer or the seller. Always fill them when those lines are printed.
+- footer_contact_person / footer_contact_mobiles come from the "Contact Person" lines printed near the bottom of the invoice (usually below Delivery/Payment terms), regardless of whether they belong to the buyer or the seller. Always fill them when those lines are printed.
 - footer_contact_mobiles: one entry per phone number; numbers printed as "9324329320 / 8169691366" become two entries. Keep digits only per entry.
 - tax_pct per item = SGST% + CGST%, or the IGST% when IGST is charged (e.g. 9+9 -> 18).
 - Include EVERY line item row, in printed order.

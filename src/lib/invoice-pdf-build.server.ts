@@ -375,7 +375,7 @@ export async function buildInvoicePdf(
     y - rowH * 2,
     footL,
     rowH,
-    `Contact Person  ${c['contact_person'] ?? '-'}   Mob. No.  ${[c['mobile'], c['alt_mobile']].filter(Boolean).join(' / ')}`,
+    `Contact Person  ${c['contact_person'] ?? '-'} ${[c['mobile'], c['alt_mobile']].filter(Boolean).join(' / ')}`,
     { size: 8.5 },
   )
   page.drawRectangle({ x: L + footL, y: y - footH, width: W - footL, height: footH, borderColor: black, borderWidth: 0.6 })
