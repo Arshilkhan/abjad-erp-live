@@ -639,7 +639,7 @@ function PrintableInvoice({ invoice, items, company, typeLabel }: { invoice: any
           <tr>
             <td className={`${cellBorder} p-1`}>
               <span className="font-bold">Contact Person</span> &nbsp; {c.contact_person ?? "—"} &nbsp; &nbsp;
-              <span className="font-bold">Mob. No.</span> &nbsp; {c.mobile ?? ""}{c.alt_mobile ? ` / ${c.alt_mobile}` : ""}
+              &nbsp; {c.mobile ?? ""}{c.alt_mobile ? ` / ${c.alt_mobile}` : ""}
             </td>
           </tr>
         </tbody>
