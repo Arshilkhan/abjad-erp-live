@@ -1,4 +1,3 @@
-
 import { amountInWords } from "@/lib/format";
 
 interface BuildDocumentPayloadArgs {
@@ -137,8 +136,6 @@ export function buildDocumentPayload({
       amount_in_words: amountInWords(totals.grand),
       payment_terms: paymentTerms || null,
     });
-
-    // PO details are exclusive to Tax Invoices.
     if (isTaxInvoice) {
       Object.assign(payload, {
         transportation_charges: Number(transportCharges || 0),
@@ -146,7 +143,8 @@ export function buildDocumentPayload({
         po_number: poNumber.trim() || null,
         po_date: poDate || null,
         reference_challan_number: referenceChallanNumber.trim() || null,
-        reference_challan_date: referenceChallanDates || null,
+        reference_challan_date: referenceChallanDates[0] || null,
+        reference_challan_dates: referenceChallanDates,
       });
     }
   }
