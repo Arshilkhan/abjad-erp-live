@@ -1,15 +1,8 @@
-
 import WordExtractor from "word-extractor";
-
-// Server-only helper for extracting invoice data from PDF and Word documents.
-
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
-
 const PROMPT = `
 You extract invoice data from an Indian GST invoice or purchase-related document.
-
 Return ONLY a JSON object (no markdown fences) with exactly this shape:
-
 {
   "customer_name": string,
   "customer_address": string,
@@ -23,7 +16,7 @@ Return ONLY a JSON object (no markdown fences) with exactly this shape:
   "po_number": string,
   "po_date": "YYYY-MM-DD",
   "reference_challan_number": string,
-  "reference_challan_date": "YYYY-MM-DD",
+  "reference_challan_dates": ["YYYY-MM-DD"],
   "challan_number": string,
   "challan_date": "YYYY-MM-DD",
   "work_order_number": string,
@@ -46,9 +39,7 @@ Return ONLY a JSON object (no markdown fences) with exactly this shape:
     }
   ]
 }
-
 Rules:
-
 - The customer is the party being BILLED (buyer / Customer Name block), never the issuing seller company.
 - contact_person and email must belong to the buyer. Leave empty when only the seller's contact is printed.
 - footer_contact_person comes from the Contact Person lines printed near the bottom of the document.
@@ -56,18 +47,21 @@ Rules:
 - Extract the PURCHASE ORDER number into po_number.
 - Extract the PURCHASE ORDER date into po_date.
 - Extract the reference delivery challan number into reference_challan_number.
-- Extract the reference delivery challan date into reference_challan_date.
+- Extract ALL dates associated with the reference delivery challan into reference_challan_dates.
 - Look for labels such as "Reference Challan No.", "Ref. Challan No.", "Challan No.", "DC No.", "Delivery Challan No.", and their corresponding date labels.
-- Do not confuse reference challan details with the seller-issued invoice number, purchase order number/date, or work order number.
-- If multiple challan numbers are printed, preserve them as printed, including commas or separators.
-- If a reference challan number or date is not present, return an empty string. Never substitute another document's number or date.
+- If multiple reference challan dates are printed, include EVERY date in reference_challan_dates in the order they appear in the document.
+- Return reference_challan_dates as an array of YYYY-MM-DD strings.
+- If no reference challan dates are present, return an empty array [].
+- Do not confuse reference challan details with the seller-issued invoice number, purchase order number/date, actual delivery challan number/date, or work order number.
+- If multiple reference challan numbers are printed, preserve them as printed, including commas or separators.
+- Never substitute an invoice, PO, or work order date for a reference challan date.
 - Do not confuse the PO number/date with the invoice number/date, challan number/date, or work order number.
 - If a purchase order number or date is not present, return an empty string. Never substitute another document's number or date.
 - All dates must be returned in YYYY-MM-DD format.
 - tax_pct per item = SGST% + CGST%, or IGST% when IGST is charged (e.g. 9+9 -> 18).
 - Include EVERY line item row, in printed order.
 - Use "" for unknown text and 0 for unknown numbers. Never invent data.
-- notes: only genuine remarks printed on the document, otherwise 
+- notes: only genuine remarks printed on the document; otherwise return an empty string.
 - Extract the seller-issued invoice number into invoice_number.
 - Do not confuse the invoice number with the PO number, challan number, or work order number.
 - Preserve the invoice number exactly as printed, including prefixes, slashes, hyphens, and letters.
@@ -78,7 +72,7 @@ Rules:
 - Do NOT use the seller's address as the customer address.
 - Preserve the complete customer address, including plot/flat number, building, street, area, city, state, and PIN code when printed.
 - Preserve meaningful address separators and line breaks where possible.
-- If the buyer's address is not present, return an empty string."".
+- If the buyer's address is not present, return an empty string.
 `;
 
 export type ExtractedItem = {
@@ -93,7 +87,7 @@ export type ExtractedItem = {
 
 export type ExtractedInvoice = {
   reference_challan_number: string;
-  reference_challan_date: string;
+  reference_challan_dates: string[];
   customer_name: string;
   customer_address: string;
   company_name: string;
@@ -125,18 +119,32 @@ const num = (v: unknown) => {
   const n = Number(
     typeof v === "string" ? v.replace(/[^0-9.-]/g, "") : v,
   );
+
   return Number.isFinite(n) ? n : 0;
 };
 
 const date = (v: unknown) =>
   /^\d{4}-\d{2}-\d{2}$/.test(str(v)) ? str(v) : "";
+const dates = (v: unknown): string[] => {
+  const values = Array.isArray(v) ? v : v ? [v] : [];
+
+  return [
+    ...new Set(
+      values
+        .map((value) => date(value))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
+};
 
 function normalize(raw: any): ExtractedInvoice {
   const items = Array.isArray(raw?.items) ? raw.items : [];
 
   return {
     reference_challan_number: str(raw?.reference_challan_number),
-    reference_challan_date: date(raw?.reference_challan_date),
+    reference_challan_dates: dates(
+      raw?.reference_challan_dates ?? raw?.reference_challan_date,
+    ),
     customer_name: str(raw?.customer_name),
     customer_address: str(raw?.customer_address),
     company_name:

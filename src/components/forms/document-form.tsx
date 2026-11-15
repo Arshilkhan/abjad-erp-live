@@ -179,7 +179,8 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
   const [custGst, setCustGst] = useState("");
 
   const [referenceChallanNumber, setReferenceChallanNumber] = useState("");
-  const [referenceChallanDate, setReferenceChallanDate] = useState("");
+  const [referenceChallanDates, setReferenceChallanDates] = useState<string[]>([]);
+  const [referenceChallanDateInput, setReferenceChallanDateInput] = useState("");
   const [challanNumber, setChallanNumber] = useState("");
   const [challanDates, setChallanDates] = useState<string[]>([]);
   const [challanDateInput, setChallanDateInput] = useState("");
@@ -266,7 +267,10 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
       setPoNumber(inv.po_number ?? "");
       setPoDate(inv.po_date ?? "");
       setReferenceChallanNumber(inv.reference_challan_number ?? "");
-      setReferenceChallanDate(inv.reference_challan_date ?? "");
+      setReferenceChallanDates(
+        (inv.reference_challan_dates as string[] | null) ??
+        (inv.reference_challan_date ? [inv.reference_challan_date] : [])
+      );
     }
     if (isChallan) {
       setChallanNumber(inv.challan_number ?? "");
@@ -355,6 +359,18 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
     setChallanDates((prev) => (prev.includes(challanDateInput) ? prev : [...prev, challanDateInput].sort()));
     setChallanDateInput("");
   }, [challanDateInput]);
+
+  const addReferenceChallanDate = useCallback(() => {
+    if (!referenceChallanDateInput) return;
+
+    setReferenceChallanDates((prev) =>
+      prev.includes(referenceChallanDateInput)
+        ? prev
+        : [...prev, referenceChallanDateInput].sort()
+    );
+
+    setReferenceChallanDateInput("");
+  }, [referenceChallanDateInput]);
 
   const setItem = useCallback((idx: number, patch: Partial<LineItem>) => {
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
@@ -448,7 +464,7 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
         notes,
         status,
         referenceChallanNumber,
-        referenceChallanDate,
+        referenceChallanDates,
         isChallan,
         isTaxInvoice,
         isIGST,
@@ -532,7 +548,7 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
     (file: File) =>
       importInvoicePdf({
         setReferenceChallanNumber,
-        setReferenceChallanDate,
+        setReferenceChallanDates,
         setPoNumber,
         setCustAddress,
         setPoDate,
@@ -603,9 +619,12 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
       details={
         <DocumentDetails
           referenceChallanNumber={referenceChallanNumber}
-          referenceChallanDate={referenceChallanDate}
+          referenceChallanDates={referenceChallanDates}
+          referenceChallanDateInput={referenceChallanDateInput}
+          setReferenceChallanDateInput={setReferenceChallanDateInput}
+          setReferenceChallanDates={setReferenceChallanDates}
+          addReferenceChallanDate={addReferenceChallanDate}
           setReferenceChallanNumber={setReferenceChallanNumber}
-          setReferenceChallanDate={setReferenceChallanDate}
           isChallan={isChallan}
           isEdit={isEdit}
           isTaxInvoice={isTaxInvoice}

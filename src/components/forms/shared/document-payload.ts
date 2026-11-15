@@ -3,7 +3,7 @@ import { amountInWords } from "@/lib/format";
 
 interface BuildDocumentPayloadArgs {
   referenceChallanNumber: string;
-  referenceChallanDate: string;
+  referenceChallanDates: string[];
   documentNumber: string;
   poNumber: string;
   poDate: string;
@@ -51,7 +51,7 @@ interface BuildDocumentPayloadArgs {
 export function buildDocumentPayload({
   documentNumber,
   referenceChallanNumber,
-  referenceChallanDate,
+  referenceChallanDates,
   poNumber,
   poDate,
   invoiceType,
@@ -146,7 +146,7 @@ export function buildDocumentPayload({
         po_number: poNumber.trim() || null,
         po_date: poDate || null,
         reference_challan_number: referenceChallanNumber.trim() || null,
-        reference_challan_date: referenceChallanDate || null,
+        reference_challan_date: referenceChallanDates || null,
       });
     }
   }

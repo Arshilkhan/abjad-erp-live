@@ -1,3 +1,4 @@
+
 import type { Dispatch, SetStateAction } from "react";
 
 type Setter<T> = Dispatch<SetStateAction<T>>;
@@ -33,12 +34,14 @@ interface PdfImportData {
   po_number?: string;
   po_date?: string;
   reference_challan_number?: string;
-  reference_challan_date?: string;
+  reference_challan_dates?: string[];
 }
 
 interface ImportPdfArgs {
   file: File;
-  runExtract: (args: { data: { fileData: string; fileName: string } }) => Promise<PdfImportData>;
+  runExtract: (args: {
+    data: { fileData: string; fileName: string };
+  }) => Promise<PdfImportData>;
   customers: any[];
   products: any[];
   isTaxInvoice: boolean;
@@ -66,7 +69,7 @@ interface ImportPdfArgs {
   setPoNumber: Setter<string>;
   setPoDate: Setter<string>;
   setReferenceChallanNumber: Setter<string>;
-  setReferenceChallanDate: Setter<string>;
+  setReferenceChallanDates: Setter<string[]>;
   toast: {
     error: (message: string) => unknown;
     success: (message: string) => unknown;
@@ -74,7 +77,7 @@ interface ImportPdfArgs {
 }
 
 const ALLOWED_EXTENSIONS = new Set(["pdf", "doc", "docx"]);
-const MAX_FILE_BYTES = 15 * 1024 * 1024; // 15 MB
+const MAX_FILE_BYTES = 15 * 1024 * 1024;
 const DEFAULT_TAX_PCT = 18;
 
 const lower = (s: unknown) => String(s ?? "").toLowerCase();
@@ -90,17 +93,22 @@ function readFileAsDataURL(file: File): Promise<string> {
 
 function buildIdIndex(rows: any[], nameFields: string[]): Map<string, string> {
   const index = new Map<string, string>();
+
   for (const row of rows) {
     for (const field of nameFields) {
       const key = lower(row[field]);
       if (key && !index.has(key)) index.set(key, row.id);
     }
   }
+
   return index;
 }
 
-/** Calls `setter` only when the value is truthy (the original `if (x) setX(x)` pattern). */
-function applyIfPresent<T>(setter: Setter<T>, value: T | undefined | null) {
+/** Calls setter only when the value is truthy. */
+function applyIfPresent<T>(
+  setter: Setter<T>,
+  value: T | undefined | null
+) {
   if (value) setter(value);
 }
 
@@ -134,15 +142,17 @@ export async function importInvoicePdf({
   setPoNumber,
   setPoDate,
   setReferenceChallanNumber,
-  setReferenceChallanDate,
+  setReferenceChallanDates,
   toast,
 }: ImportPdfArgs): Promise<void> {
-  // ---- validate before touching any state ----
+  // Validate before touching any state.
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+
   if (!ALLOWED_EXTENSIONS.has(extension)) {
     toast.error("Please choose a PDF, DOC, or DOCX file.");
     return;
   }
+
   if (file.size > MAX_FILE_BYTES) {
     toast.error("Document is too large (max 15 MB).");
     return;
@@ -154,12 +164,17 @@ export async function importInvoicePdf({
 
   try {
     const fileData = await readFileAsDataURL(file);
-    const d = await runExtract({ data: { fileData, fileName: file.name } });
+    const d = await runExtract({
+      data: { fileData, fileName: file.name },
+    });
 
-    // ---- customer ----
+    // Customer details.
     if (d.customer_name) {
-      // O(1) lookup instead of scanning the list on every call.
-      const customerIndex = buildIdIndex(customers, ["customer_name", "company_name"]);
+      const customerIndex = buildIdIndex(customers, [
+        "customer_name",
+        "company_name",
+      ]);
+
       setCustomerId(customerIndex.get(lower(d.customer_name)) ?? "");
       setCustomerText(d.customer_name);
     }
@@ -167,44 +182,51 @@ export async function importInvoicePdf({
     const companyName = d.customer_name || d.company_name;
     if (companyName) setCustCompany(companyName);
 
-    const footerMobiles = d.footer_contact_mobiles?.length ? d.footer_contact_mobiles.join(" / ") : "";
-    if (footerMobiles && !d.mobile) setCustMobile(footerMobiles);
+    const footerMobiles = d.footer_contact_mobiles?.length
+      ? d.footer_contact_mobiles.join(" / ")
+      : "";
+
+    if (footerMobiles && !d.mobile) {
+      setCustMobile(footerMobiles);
+    }
 
     applyIfPresent(setCustEmail, d.email);
     applyIfPresent(setCustGst, d.gst_number);
     applyIfPresent(setCustAddress, d.customer_address);
-
-    // ---- document references ----
     applyIfPresent(setPoNumber, d.po_number);
     applyIfPresent(setPoDate, d.po_date);
     applyIfPresent(setReferenceChallanNumber, d.reference_challan_number);
-    applyIfPresent(setReferenceChallanDate, d.reference_challan_date);
+
+    if (d.reference_challan_dates?.length) {
+      setReferenceChallanDates(d.reference_challan_dates);
+    }
+
     applyIfPresent(setDocumentNumber, d.invoice_number);
     applyIfPresent(setInvoiceDate, d.invoice_date);
     applyIfPresent(setWorkOrder, d.work_order_number);
 
-    // ---- charges (tax invoices only) ----
     if (isTaxInvoice) {
       applyIfPresent(setFreight, d.freight);
       applyIfPresent(setPacking, d.packing_charges);
       applyIfPresent(setOtherCharges, d.other_charges);
     }
 
-    // ---- delivery / terms ----
+    // Delivery details and terms.
     applyIfPresent(setDeliveryMode, d.delivery_mode);
     applyIfPresent(setPaymentTerms, d.payment_terms);
     applyIfPresent(setNotes, d.notes);
 
-    // ---- line items ----
+    // Line items.
     const importedItems = d.items;
+
     if (importedItems.length) {
       const productIndex = buildIdIndex(products, ["product_name"]);
       const nextItems = new Array(importedItems.length);
       const nextTexts = new Array<string>(importedItems.length);
 
-      // One pass builds both arrays.
       for (let i = 0; i < importedItems.length; i++) {
         const it = importedItems[i];
+
         nextItems[i] = {
           sr_no: i + 1,
           product_id: productIndex.get(lower(it.description)) ?? null,
@@ -218,6 +240,7 @@ export async function importInvoicePdf({
           tax_pct: it.tax_pct || DEFAULT_TAX_PCT,
           serial_batch_number: "",
         };
+
         nextTexts[i] = it.description;
       }
 
@@ -226,8 +249,11 @@ export async function importInvoicePdf({
     }
 
     setPdfImported(true);
+
     const count = importedItems.length;
-    toast.success(`Imported ${count} line item${count === 1 ? "" : "s"} from the document.`);
+    toast.success(
+      `Imported ${count} line item${count === 1 ? "" : "s"} from the document.`
+    );
   } catch (e: any) {
     toast.error(e?.message || "Could not read that document.");
   } finally {

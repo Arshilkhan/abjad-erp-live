@@ -34,9 +34,12 @@ interface InvoiceSettings {
 
 interface DocumentDetailsProps {
   referenceChallanNumber: string;
-  referenceChallanDate: string;
+  referenceChallanDates: string[];
+  referenceChallanDateInput: string;
+  setReferenceChallanDateInput: (value: string) => void;
+  setReferenceChallanDates: React.Dispatch<React.SetStateAction<string[]>>;
+  addReferenceChallanDate: () => void;
   setReferenceChallanNumber: (value: string) => void;
-  setReferenceChallanDate: (value: string) => void;
   isChallan: boolean;
   isEdit: boolean;
   isTaxInvoice: boolean;
@@ -90,9 +93,12 @@ interface DocumentDetailsProps {
 
 export function DocumentDetails({
   referenceChallanNumber,
-  referenceChallanDate,
+  referenceChallanDates,
+  referenceChallanDateInput,
+  setReferenceChallanDateInput,
+  setReferenceChallanDates,
+  addReferenceChallanDate,
   setReferenceChallanNumber,
-  setReferenceChallanDate,
   isChallan,
   isEdit,
   isTaxInvoice,
@@ -342,13 +348,56 @@ export function DocumentDetails({
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <Label className="text-xs">Challan Date</Label>
-                <Input
-                  type="date"
-                  value={referenceChallanDate}
-                  onChange={(e) => setReferenceChallanDate(e.target.value)}
-                />
+              <div className="col-span-2 space-y-1.5">
+                <Label className="text-xs">Challan Dates</Label>
+
+                <div className="flex gap-2">
+                  <Input
+                    type="date"
+                    value={referenceChallanDateInput}
+                    onChange={(e) => setReferenceChallanDateInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addReferenceChallanDate();
+                      }
+                    }}
+                  />
+
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={addReferenceChallanDate}
+                  >
+                    Add
+                  </Button>
+                </div>
+
+                {referenceChallanDates.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {referenceChallanDates.map((d) => (
+                      <span
+                        key={d}
+                        className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs"
+                      >
+                        {d}
+
+                        <button
+                          type="button"
+                          aria-label={`Remove ${d}`}
+                          className="text-muted-foreground hover:text-destructive"
+                          onClick={() =>
+                            setReferenceChallanDates((prev) =>
+                              prev.filter((x) => x !== d)
+                            )
+                          }
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </>
           )}
