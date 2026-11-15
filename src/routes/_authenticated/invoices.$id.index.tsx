@@ -471,6 +471,24 @@ function PrintableInvoice({ invoice, items, company, typeLabel }: { invoice: any
             <td className={`${cellBorder} p-1 ${label}`}>PO DATE</td>
             <td className={`${cellBorder} p-1 ${val}`} colSpan={3}>{invoice.po_date ? formatDate(invoice.po_date) : ""}</td>
           </tr>
+          <tr>
+            <td className={`${cellBorder} p-1`}></td>
+            <td className={`${cellBorder} p-1`}></td>
+            <td className={`${cellBorder} p-1 ${label}`}>Reference Challan No.</td>
+            <td className={`${cellBorder} p-1 ${val}`} colSpan={3}>{invoice.reference_challan_number ?? ""}</td>
+          </tr>
+          <tr>
+            <td className={`${cellBorder} p-1`}></td>
+            <td className={`${cellBorder} p-1`}></td>
+            <td className={`${cellBorder} p-1 ${label}`}>Challan Date</td>
+            <td className={`${cellBorder} p-1 ${val}`} colSpan={3}>
+              {Array.isArray(invoice.reference_challan_dates) && invoice.reference_challan_dates.length
+                ? invoice.reference_challan_dates.map((date: string) => formatDate(date)).join(", ")
+                : invoice.reference_challan_date
+                  ? formatDate(invoice.reference_challan_date)
+                  : ""}
+            </td>
+          </tr>
         </tbody>
       </table>
 
