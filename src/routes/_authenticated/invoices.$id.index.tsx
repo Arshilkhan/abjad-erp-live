@@ -433,8 +433,6 @@ function PrintableInvoice({ invoice, items, company, typeLabel }: { invoice: any
           <div className="mt-1" style={{ fontSize: 9 }}>
             <span className="underline font-semibold">OFFICE &amp; WORKS:</span>{" "}
             {[c.address, c.city, c.state ? `(${c.state})` : "", c.pincode].filter(Boolean).join(", ") || "UNIT NO. 008, G-WING, UDYOG BHAVAN -2, PLOT NO. K-3, MIDC ANAND NAGER AMBERNATH (E) PIN 421 506"}
-            {c.city && <>, {c.city}</>}
-            {c.state && <> ({c.state})</>}
             {(c.mobile || c.alt_mobile) && <>, {c.mobile}{c.alt_mobile ? ` / ${c.alt_mobile}` : ""}</>}
             {c.email && <div className="italic text-blue-700">Email: {c.email}</div>}
             {c.website && <div className="italic text-blue-700">Website: {c.website}</div>}
@@ -452,36 +450,30 @@ function PrintableInvoice({ invoice, items, company, typeLabel }: { invoice: any
       <table className="w-full border-collapse text-[11px]">
         <tbody>
           <tr>
-            <td className={`${cellBorder} p-1 ${label} w-[15%] align-top`}>CUSTOMER NAME</td>
-            <td className={`${cellBorder} p-1 ${val} w-[45%] align-top`}>{invoice.customer_name_snapshot ?? "—"}</td>
-            <td className={`${cellBorder} p-1 ${label} w-[15%]`}>Bill No.</td>
-            <td className={`${cellBorder} p-1 ${val} w-[10%]`}>{billNo(invoice.invoice_number)}</td>
-            <td className={`${cellBorder} p-1 ${label} w-[8%]`}>Date</td>
-            <td className={`${cellBorder} p-1 ${val} w-[12%]`}>{formatDate(invoice.invoice_date)}</td>
+            <td className={`${cellBorder} px-1 py-[3px] ${label} align-top`} style={{ width: "15%" }}>CUSTOMER NAME</td>
+            <td className={`${cellBorder} px-1 py-[3px] ${val} align-top`} style={{ width: "38%" }}>{invoice.customer_name_snapshot ?? "—"}</td>
+            <td className={`${cellBorder} px-1 py-[3px] ${label}`} style={{ width: "14%" }}>Bill No.</td>
+            <td className={`${cellBorder} px-1 py-[3px] ${val}`} style={{ width: "13%" }}>{billNo(invoice.invoice_number)}</td>
+            <td className={`${cellBorder} px-1 py-[3px] ${label}`} style={{ width: "7%" }}>Date</td>
+            <td className={`${cellBorder} px-1 py-[3px] ${val}`} style={{ width: "13%" }}>{formatDate(invoice.invoice_date)}</td>
           </tr>
           <tr>
-            <td className={`${cellBorder} p-1 ${label} align-top`}>Address</td>
-            <td className={`${cellBorder} p-1 ${val} align-top`} style={{ height: 48, whiteSpace: "pre-wrap" }}>{invoice.customer_address_snapshot ?? "—"}</td>
-            <td className={`${cellBorder} p-1 ${label}`}>PO No.</td>
-            <td className={`${cellBorder} p-1 ${val}`} colSpan={3}>{invoice.po_number ?? ""}</td>
+            <td className={`${cellBorder} px-1 py-[3px] ${label} align-top`} rowSpan={4}>Address</td>
+            <td className={`${cellBorder} px-1 py-[3px] ${val} align-top`} rowSpan={4} style={{ whiteSpace: "pre-wrap" }}>{invoice.customer_address_snapshot ?? "—"}</td>
+            <td className={`${cellBorder} px-1 py-[3px] ${label}`}>PO No.</td>
+            <td className={`${cellBorder} px-1 py-[3px] ${val}`} colSpan={3}>{invoice.po_number ?? ""}</td>
           </tr>
           <tr>
-            <td className={`${cellBorder} p-1`}></td>
-            <td className={`${cellBorder} p-1`}></td>
-            <td className={`${cellBorder} p-1 ${label}`}>PO DATE</td>
-            <td className={`${cellBorder} p-1 ${val}`} colSpan={3}>{invoice.po_date ? formatDate(invoice.po_date) : ""}</td>
+            <td className={`${cellBorder} px-1 py-[3px] ${label}`}>PO DATE</td>
+            <td className={`${cellBorder} px-1 py-[3px] ${val}`} colSpan={3}>{invoice.po_date ? formatDate(invoice.po_date) : ""}</td>
           </tr>
           <tr>
-            <td className={`${cellBorder} p-1`}></td>
-            <td className={`${cellBorder} p-1`}></td>
-            <td className={`${cellBorder} p-1 ${label}`}>Challan No.</td>
-            <td className={`${cellBorder} p-1 ${val}`} colSpan={3}>{invoice.reference_challan_number ?? ""}</td>
+            <td className={`${cellBorder} px-1 py-[3px] ${label}`}>Challan No.</td>
+            <td className={`${cellBorder} px-1 py-[3px] ${val}`} colSpan={3}>{invoice.reference_challan_number ?? ""}</td>
           </tr>
           <tr>
-            <td className={`${cellBorder} p-1`}></td>
-            <td className={`${cellBorder} p-1`}></td>
-            <td className={`${cellBorder} p-1 ${label}`}>Challan Date</td>
-            <td className={`${cellBorder} p-1 ${val}`} colSpan={3}>
+            <td className={`${cellBorder} px-1 py-[3px] ${label}`}>Challan Date</td>
+            <td className={`${cellBorder} px-1 py-[3px] ${val}`} colSpan={3}>
               {Array.isArray(invoice.reference_challan_dates) && invoice.reference_challan_dates.length
                 ? invoice.reference_challan_dates.map((date: string) => formatDate(date)).join(", ")
                 : invoice.reference_challan_date
