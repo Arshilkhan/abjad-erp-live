@@ -265,6 +265,8 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
     if (isTaxInvoice) {
       setPoNumber(inv.po_number ?? "");
       setPoDate(inv.po_date ?? "");
+      setReferenceChallanNumber(inv.reference_challan_number ?? "");
+      setReferenceChallanDate(inv.reference_challan_date ?? "");
     }
     if (isChallan) {
       setChallanNumber(inv.challan_number ?? "");

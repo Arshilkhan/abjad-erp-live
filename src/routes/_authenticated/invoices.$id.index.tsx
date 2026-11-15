@@ -184,6 +184,8 @@ function InvoiceDetail() {
         grand_total: invoice.grand_total,
         amount_in_words: invoice.amount_in_words,
         payment_terms: invoice.payment_terms,
+        reference_challan_number: invoice.reference_challan_number,
+        reference_challan_date: invoice.reference_challan_date,
       });
     }
     const { data: newInv, error } = await supabase.from(docTable).insert(duplicatePayload).select("id").single();

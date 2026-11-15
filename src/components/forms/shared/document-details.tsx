@@ -334,7 +334,7 @@ export function DocumentDetails({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Reference Challan No.</Label>
+                <Label className="text-xs">Challan No.</Label>
                 <Input
                   value={referenceChallanNumber}
                   onChange={(e) => setReferenceChallanNumber(e.target.value)}
@@ -343,7 +343,7 @@ export function DocumentDetails({
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs">Reference Challan Date</Label>
+                <Label className="text-xs">Challan Date</Label>
                 <Input
                   type="date"
                   value={referenceChallanDate}
