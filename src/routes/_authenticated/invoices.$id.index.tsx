@@ -323,14 +323,14 @@ function PrintableChallan({ invoice, items, company }: { invoice: any; items: an
 
   return (
     <div className="text-[11px] text-black" style={{ fontFamily: "Arial, Helvetica, sans-serif" }}>
-      <div className="flex items-start justify-between gap-4 pb-2">
+      <div className="flex items-start justify-between gap-4 pb-2" style={{ minHeight: 62 }}>
         <div>
           <h1 className="text-xl font-bold">{c.name ?? "ABJAD ENGINEERING WORKS"}</h1>
           <div>{[c.address, c.city, c.state, c.pincode].filter(Boolean).join(", ")}</div>
           <div>GSTIN: {c.gst_number ?? "—"}</div>
           <div>{[c.mobile, c.alt_mobile, c.email].filter(Boolean).join(" • ")}</div>
         </div>
-        <img src={aewLogo} alt="AEW logo" className="h-20 w-auto object-contain" />
+        <img src={aewLogo} alt="AEW logo" style={{ height: 58, width: "auto", objectFit: "contain" }} />
       </div>
       <h2 className="bg-primary py-2 text-center text-xl font-bold text-primary-foreground">DELIVERY CHALLAN</h2>
 
@@ -425,26 +425,27 @@ function PrintableInvoice({ invoice, items, company, typeLabel }: { invoice: any
   };
 
   return (
-    <div className="font-serif text-black" style={{ fontFamily: "'Times New Roman', Times, serif" }}>
+    <div className="font-serif text-black" style={{ fontFamily: "Arial, Helvetica, sans-serif", fontSize: "9.5pt", lineHeight: 1.2 }}>
       {/* HEADER */}
       <div className="flex items-start justify-between gap-4 pb-2">
         <div className="flex-1">
-          <h1 className="text-xl font-bold underline">{c.name ?? "ABJAD ENGINEERING WORKS"}</h1>
-          <div className="mt-1 text-[11px] leading-snug">
+          <h1 className="m-0 font-bold" style={{ fontSize: 15, lineHeight: 1.15 }}>{c.name ?? "ABJAD ENGINEERING WORKS"}</h1>
+          <div className="mt-1" style={{ fontSize: 9 }}>
             <span className="underline font-semibold">OFFICE &amp; WORKS:</span>{" "}
-            {c.address ?? "UNIT NO. 008, G-WING, UDYOG BHAVAN -2, PLOT NO. K-3, MIDC ANAND NAGER AMBERNATH (E) PIN 421 506"}
+            {[c.address, c.city, c.state ? `(${c.state})` : "", c.pincode].filter(Boolean).join(", ") || "UNIT NO. 008, G-WING, UDYOG BHAVAN -2, PLOT NO. K-3, MIDC ANAND NAGER AMBERNATH (E) PIN 421 506"}
             {c.city && <>, {c.city}</>}
             {c.state && <> ({c.state})</>}
             {(c.mobile || c.alt_mobile) && <>, {c.mobile}{c.alt_mobile ? ` / ${c.alt_mobile}` : ""}</>}
             {c.email && <div className="italic text-blue-700">Email: {c.email}</div>}
+            {c.website && <div className="italic text-blue-700">Website: {c.website}</div>}
           </div>
         </div>
         <img src={aewLogo} alt="AEW logo" className="h-20 w-auto object-contain" />
       </div>
 
       {/* TITLE BANNER */}
-      <div className="my-1 bg-[#5b9bd5] py-1.5 text-center">
-        <h2 className="text-2xl font-bold tracking-wider text-white">{typeLabel}</h2>
+      <div className="my-1 flex items-center justify-center text-center" style={{ height: 22, backgroundColor: "#5b9bd5" }}>
+        <h2 className="m-0 font-bold text-white" style={{ fontSize: 15 }}>{typeLabel}</h2>
       </div>
 
       {/* CUSTOMER + BILL META */}
@@ -460,7 +461,15 @@ function PrintableInvoice({ invoice, items, company, typeLabel }: { invoice: any
           </tr>
           <tr>
             <td className={`${cellBorder} p-1 ${label} align-top`}>Address</td>
-            <td className={`${cellBorder} p-1 ${val} align-top`} colSpan={5}>{invoice.customer_address_snapshot ?? "—"}</td>
+            <td className={`${cellBorder} p-1 ${val} align-top`} style={{ height: 48, whiteSpace: "pre-wrap" }}>{invoice.customer_address_snapshot ?? "—"}</td>
+            <td className={`${cellBorder} p-1 ${label}`}>PO No.</td>
+            <td className={`${cellBorder} p-1 ${val}`} colSpan={3}>{invoice.po_number ?? ""}</td>
+          </tr>
+          <tr>
+            <td className={`${cellBorder} p-1`}></td>
+            <td className={`${cellBorder} p-1`}></td>
+            <td className={`${cellBorder} p-1 ${label}`}>PO DATE</td>
+            <td className={`${cellBorder} p-1 ${val}`} colSpan={3}>{invoice.po_date ? formatDate(invoice.po_date) : ""}</td>
           </tr>
         </tbody>
       </table>
@@ -492,7 +501,7 @@ function PrintableInvoice({ invoice, items, company, typeLabel }: { invoice: any
         <thead>
           <tr className="bg-gray-100">
             <th className={`${cellBorder} p-1 w-[6%]`}>Sr. No.</th>
-            <th className={`${cellBorder} p-1 w-[10%]`}>HSN /SAC Cod</th>
+            <th className={`${cellBorder} p-1 w-[10%]`}>HSN /SAC</th>
             <th className={`${cellBorder} p-1 text-left`}>Item Description</th>
             <th className={`${cellBorder} p-1 w-[9%]`}>Qty. (Nos)</th>
             <th className={`${cellBorder} p-1 w-[8%]`}>UOM</th>
