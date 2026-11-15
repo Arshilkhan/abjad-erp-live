@@ -17,11 +17,6 @@ const TYPE_LABELS: Record<string, string> = {
   purchase_order: 'PURCHASE ORDER',
 }
 
-/**
- * Builds the A4 invoice PDF using the same layout as the on-screen
- * printable invoice: bordered tables, blue title banner, buyer/company
- * detail grid, item table, bank + totals block, words, footer, declaration.
- */
 export async function buildInvoicePdf(
   invoice: Row,
   items: Row[],
@@ -222,7 +217,8 @@ export async function buildInvoicePdf(
   cell(cx[5]!, y, cw[5]!, rowH, formatDate(invoice['invoice_date']), { size: 8.5 })
   y -= rowH
 
-  const addrH = rowH * 3
+  const isTaxInvoice = String(invoice['invoice_type']) === 'tax_invoice'
+  const addrH = rowH * (isTaxInvoice ? 4 : 3)
   cell(cx[0]!, y, cw[0]!, addrH, '', { bold: true })
   draw('Address', cx[0]! + 3, y - 12, 9.5, { bold: true })
   const addrLines = wrap(invoice['customer_address_snapshot'] ?? '-', cw[1]! - 6, 9.5).slice(0, 3)
@@ -230,13 +226,33 @@ export async function buildInvoicePdf(
   addrLines.forEach((l, i) => draw(l, cx[1]! + 3, y - 13 - i * 12, 9.5))
   const rightX = cx[2]!
   const rightW = cw[2]! + cw[3]! + cw[4]! + cw[5]!
-  if (String(invoice['invoice_type']) === 'tax_invoice') {
-    const metaRowH = addrH / 2
+  if (isTaxInvoice) {
+    const metaRowH = addrH / 4
     const metaLabelW = rightW * 0.32
-    cell(rightX, y, metaLabelW, metaRowH, 'PO No.', { bold: true })
-    cell(rightX + metaLabelW, y, rightW - metaLabelW, metaRowH, invoice['po_number'] ?? '')
-    cell(rightX, y - metaRowH, metaLabelW, metaRowH, 'PO DATE', { bold: true })
-    cell(rightX + metaLabelW, y - metaRowH, rightW - metaLabelW, metaRowH, invoice['po_date'] ? formatDate(invoice['po_date']) : '')
+
+    const metadataRows: Array<[string, string]> = [
+      ['PO No.', invoice['po_number'] ?? ''],
+      ['PO DATE', invoice['po_date'] ? formatDate(invoice['po_date']) : ''],
+      ['Ref. Challan No.', invoice['reference_challan_number'] ?? ''],
+      [
+        'Ref. Challan Date',
+        invoice['reference_challan_date']
+          ? formatDate(invoice['reference_challan_date'])
+          : '',
+      ],
+    ]
+
+    metadataRows.forEach(([label, value], index) => {
+      const rowY = y - index * metaRowH
+      cell(rightX, rowY, metaLabelW, metaRowH, label, { bold: true })
+      cell(
+        rightX + metaLabelW,
+        rowY,
+        rightW - metaLabelW,
+        metaRowH,
+        value,
+      )
+    })
   } else {
     cell(rightX, y, rightW, addrH, '')
   }

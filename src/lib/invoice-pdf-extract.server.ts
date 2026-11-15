@@ -22,6 +22,8 @@ Return ONLY a JSON object (no markdown fences) with exactly this shape:
   "invoice_date": "YYYY-MM-DD",
   "po_number": string,
   "po_date": "YYYY-MM-DD",
+  "reference_challan_number": string,
+  "reference_challan_date": "YYYY-MM-DD",
   "challan_number": string,
   "challan_date": "YYYY-MM-DD",
   "work_order_number": string,
@@ -53,6 +55,12 @@ Rules:
 - Do NOT extract, return, or infer any mobile number or telephone number.
 - Extract the PURCHASE ORDER number into po_number.
 - Extract the PURCHASE ORDER date into po_date.
+- Extract the reference delivery challan number into reference_challan_number.
+- Extract the reference delivery challan date into reference_challan_date.
+- Look for labels such as "Reference Challan No.", "Ref. Challan No.", "Challan No.", "DC No.", "Delivery Challan No.", and their corresponding date labels.
+- Do not confuse reference challan details with the seller-issued invoice number, purchase order number/date, or work order number.
+- If multiple challan numbers are printed, preserve them as printed, including commas or separators.
+- If a reference challan number or date is not present, return an empty string. Never substitute another document's number or date.
 - Do not confuse the PO number/date with the invoice number/date, challan number/date, or work order number.
 - If a purchase order number or date is not present, return an empty string. Never substitute another document's number or date.
 - All dates must be returned in YYYY-MM-DD format.
@@ -84,6 +92,8 @@ export type ExtractedItem = {
 };
 
 export type ExtractedInvoice = {
+  reference_challan_number: string;
+  reference_challan_date: string;
   customer_name: string;
   customer_address: string;
   company_name: string;
@@ -125,6 +135,8 @@ function normalize(raw: any): ExtractedInvoice {
   const items = Array.isArray(raw?.items) ? raw.items : [];
 
   return {
+    reference_challan_number: str(raw?.reference_challan_number),
+    reference_challan_date: date(raw?.reference_challan_date),
     customer_name: str(raw?.customer_name),
     customer_address: str(raw?.customer_address),
     company_name:

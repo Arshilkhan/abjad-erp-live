@@ -33,6 +33,10 @@ interface InvoiceSettings {
 }
 
 interface DocumentDetailsProps {
+  referenceChallanNumber: string;
+  referenceChallanDate: string;
+  setReferenceChallanNumber: (value: string) => void;
+  setReferenceChallanDate: (value: string) => void;
   isChallan: boolean;
   isEdit: boolean;
   isTaxInvoice: boolean;
@@ -85,6 +89,10 @@ interface DocumentDetailsProps {
 }
 
 export function DocumentDetails({
+  referenceChallanNumber,
+  referenceChallanDate,
+  setReferenceChallanNumber,
+  setReferenceChallanDate,
   isChallan,
   isEdit,
   isTaxInvoice,
@@ -323,6 +331,23 @@ export function DocumentDetails({
                   type="date"
                   value={poDate}
                   onChange={(e) => setPoDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Reference Challan No.</Label>
+                <Input
+                  value={referenceChallanNumber}
+                  onChange={(e) => setReferenceChallanNumber(e.target.value)}
+                  placeholder="Enter reference challan number"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Reference Challan Date</Label>
+                <Input
+                  type="date"
+                  value={referenceChallanDate}
+                  onChange={(e) => setReferenceChallanDate(e.target.value)}
                 />
               </div>
             </>
