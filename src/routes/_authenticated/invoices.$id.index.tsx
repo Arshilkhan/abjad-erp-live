@@ -474,7 +474,7 @@ function PrintableInvoice({ invoice, items, company, typeLabel }: { invoice: any
           <tr>
             <td className={`${cellBorder} p-1`}></td>
             <td className={`${cellBorder} p-1`}></td>
-            <td className={`${cellBorder} p-1 ${label}`}>Reference Challan No.</td>
+            <td className={`${cellBorder} p-1 ${label}`}>Challan No.</td>
             <td className={`${cellBorder} p-1 ${val}`} colSpan={3}>{invoice.reference_challan_number ?? ""}</td>
           </tr>
           <tr>
