@@ -12,13 +12,13 @@ Return ONLY a JSON object (no markdown fences) with exactly this shape:
   "gst_number": string,
   "footer_contact_person": string,
   "invoice_number": string,
-  "invoice_date": "YYYY-MM-DD",
+  "invoice_date": "DD-MM-YYYY",
   "po_number": string,
-  "po_date": "YYYY-MM-DD",
+  "po_date": "DD-MM-YYYY",
   "reference_challan_number": string,
-  "reference_challan_dates": ["YYYY-MM-DD"],
+  "reference_challan_dates": ["DD-MM-YYYY"],
   "challan_number": string,
-  "challan_date": "YYYY-MM-DD",
+  "challan_date": "DD-MM-YYYY",
   "work_order_number": string,
   "freight": number,
   "packing_charges": number,
@@ -50,14 +50,14 @@ Rules:
 - Extract ALL dates associated with the reference delivery challan into reference_challan_dates.
 - Look for labels such as "Reference Challan No.", "Ref. Challan No.", "Challan No.", "DC No.", "Delivery Challan No.", and their corresponding date labels.
 - If multiple reference challan dates are printed, include EVERY date in reference_challan_dates in the order they appear in the document.
-- Return reference_challan_dates as an array of YYYY-MM-DD strings.
+- Return reference_challan_dates as an array of DD-MM-YYYY strings.
 - If no reference challan dates are present, return an empty array [].
 - Do not confuse reference challan details with the seller-issued invoice number, purchase order number/date, actual delivery challan number/date, or work order number.
 - If multiple reference challan numbers are printed, preserve them as printed, including commas or separators.
 - Never substitute an invoice, PO, or work order date for a reference challan date.
 - Do not confuse the PO number/date with the invoice number/date, challan number/date, or work order number.
 - If a purchase order number or date is not present, return an empty string. Never substitute another document's number or date.
-- All dates must be returned in YYYY-MM-DD format.
+- All dates must be returned in DD-MM-YYYY format.
 - tax_pct per item = SGST% + CGST%, or IGST% when IGST is charged (e.g. 9+9 -> 18).
 - Include EVERY line item row, in printed order.
 - Use "" for unknown text and 0 for unknown numbers. Never invent data.

@@ -91,6 +91,15 @@ interface DocumentDetailsProps {
   handlePdf: (file: File) => void | Promise<unknown>;
 }
 
+function formatDateDisplay(value: string): string {
+  if (!value) return "";
+
+  const [year, month, day] = value.split("-");
+  if (!year || !month || !day) return value;
+
+  return `${day}-${month}-${year}`;
+}
+
 export function DocumentDetails({
   referenceChallanNumber,
   referenceChallanDates,
@@ -380,7 +389,7 @@ export function DocumentDetails({
                         key={d}
                         className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs"
                       >
-                        {d}
+                        {formatDateDisplay(d)}
 
                         <button
                           type="button"
@@ -489,7 +498,7 @@ export function DocumentDetails({
                         key={d}
                         className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs"
                       >
-                        {d}
+                        {formatDateDisplay(d)}
 
                         <button
                           type="button"
