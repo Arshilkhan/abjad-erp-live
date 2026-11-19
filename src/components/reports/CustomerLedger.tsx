@@ -37,6 +37,10 @@ type Invoice = {
     grand_total: number | null;
     amount_paid: number | null;
     status: string | null;
+    financial_year_id: string | null;
+    financial_year: {
+        year_label: string;
+    } | null;
 };
 
 type CustomerSummary = Customer & {
@@ -51,9 +55,7 @@ function downloadCustomerLedgerCSV(
     customer: CustomerSummary,
     invoices: Invoice[],
 ) {
-    if (!invoices.length) {
-        return;
-    }
+    if (!invoices.length) return;
 
     // Oldest invoice first for cumulative totals.
     const sortedInvoices = [...invoices].sort((a, b) => {
@@ -70,6 +72,20 @@ function downloadCustomerLedgerCSV(
 
     const escapeCSV = (value: unknown) =>
         `"${String(value ?? "").replace(/"/g, '""')}"`;
+
+    // Collect the actual financial years represented in this ledger.
+    const financialYears = [
+        ...new Set(
+            sortedInvoices
+                .map((invoice) => invoice.financial_year?.year_label)
+                .filter((year): year is string => Boolean(year)),
+        ),
+    ].sort();
+
+    const financialYearLabel =
+        financialYears.length > 0
+            ? financialYears.join(", ")
+            : "Not assigned";
 
     const headers = [
         "Invoice Number",
@@ -102,14 +118,17 @@ function downloadCustomerLedgerCSV(
 
     const csvContent = [
         [escapeCSV("CUSTOMER LEDGER")].join(","),
-        [escapeCSV("Customer Name"), escapeCSV(customer.customer)].join(","),
+        [
+            escapeCSV("Customer Name"),
+            escapeCSV(customer.customer),
+        ].join(","),
         [
             escapeCSV("Billing Address"),
             escapeCSV(customer.billing_address ?? "—"),
         ].join(","),
         [
             escapeCSV("Financial Year"),
-            escapeCSV("All invoices (FY filter not yet available)"),
+            escapeCSV(financialYearLabel),
         ].join(","),
         "",
         headers.map(escapeCSV).join(","),
@@ -167,9 +186,19 @@ export function CustomerLedger() {
         queryFn: async () => {
             const { data, error } = await supabase
                 .from("invoices")
-                .select(
-                    "id, customer_id, customer_name_snapshot, invoice_number, invoice_date, invoice_type, grand_total, amount_paid, status",
-                )
+                .select(`
+                    id,
+                    customer_id,
+                    customer_name_snapshot,
+                    invoice_number,
+                    invoice_date,
+                    invoice_type,
+                    grand_total,
+                    amount_paid,
+                    status,
+                    financial_year_id,
+                    financial_year:f_year!invoices_financial_year_id_fkey(year_label)
+                `)
                 .eq("invoice_type", "tax_invoice")
                 .neq("status", "cancelled")
                 .order("invoice_date", { ascending: false });
