@@ -48,9 +48,6 @@ import { Route as AuthenticatedInvoicesIdEditRouteImport } from './routes/_authe
 import { Route as AuthenticatedInvoicesFolderCompanyRouteImport } from './routes/_authenticated/invoices.folder.$company'
 import { Route as AuthenticatedProformasFolderCompanyRouteImport } from './routes/_authenticated/proformas.folder.$company'
 import { Route as AuthenticatedQuotationsFolderCompanyRouteImport } from './routes/_authenticated/quotations.folder.$company'
-import { Route as LovableEmailAuthPreviewRouteImport } from './routes/lovable/email/auth/preview'
-import { Route as LovableEmailAuthWebhookRouteImport } from './routes/lovable/email/auth/webhook'
-import { Route as LovableEmailTransactionalPreviewRouteImport } from './routes/lovable/email/transactional/preview'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -265,22 +262,6 @@ const AuthenticatedQuotationsFolderCompanyRoute =
     path: '/folder/$company',
     getParentRoute: () => AuthenticatedQuotationsRoute,
   } as any)
-const LovableEmailAuthPreviewRoute = LovableEmailAuthPreviewRouteImport.update({
-  id: '/lovable/email/auth/preview',
-  path: '/lovable/email/auth/preview',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LovableEmailAuthWebhookRoute = LovableEmailAuthWebhookRouteImport.update({
-  id: '/lovable/email/auth/webhook',
-  path: '/lovable/email/auth/webhook',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LovableEmailTransactionalPreviewRoute =
-  LovableEmailTransactionalPreviewRouteImport.update({
-    id: '/lovable/email/transactional/preview',
-    path: '/lovable/email/transactional/preview',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -320,9 +301,6 @@ export interface FileRoutesByFullPath {
   '/invoices/folder/$company': typeof AuthenticatedInvoicesFolderCompanyRoute
   '/proformas/folder/$company': typeof AuthenticatedProformasFolderCompanyRoute
   '/quotations/folder/$company': typeof AuthenticatedQuotationsFolderCompanyRoute
-  '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
-  '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
-  '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/invoices/$id/': typeof AuthenticatedInvoicesIdIndexRoute
 }
 export interface FileRoutesByTo {
@@ -359,9 +337,6 @@ export interface FileRoutesByTo {
   '/invoices/folder/$company': typeof AuthenticatedInvoicesFolderCompanyRoute
   '/proformas/folder/$company': typeof AuthenticatedProformasFolderCompanyRoute
   '/quotations/folder/$company': typeof AuthenticatedQuotationsFolderCompanyRoute
-  '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
-  '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
-  '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/invoices/$id': typeof AuthenticatedInvoicesIdIndexRoute
 }
 export interface FileRoutesById {
@@ -404,9 +379,6 @@ export interface FileRoutesById {
   '/_authenticated/invoices/folder/$company': typeof AuthenticatedInvoicesFolderCompanyRoute
   '/_authenticated/proformas/folder/$company': typeof AuthenticatedProformasFolderCompanyRoute
   '/_authenticated/quotations/folder/$company': typeof AuthenticatedQuotationsFolderCompanyRoute
-  '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
-  '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
-  '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/_authenticated/invoices/$id/': typeof AuthenticatedInvoicesIdIndexRoute
 }
 export interface FileRouteTypes {
@@ -449,9 +421,6 @@ export interface FileRouteTypes {
     | '/invoices/folder/$company'
     | '/proformas/folder/$company'
     | '/quotations/folder/$company'
-    | '/lovable/email/auth/preview'
-    | '/lovable/email/auth/webhook'
-    | '/lovable/email/transactional/preview'
     | '/invoices/$id/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -488,9 +457,6 @@ export interface FileRouteTypes {
     | '/invoices/folder/$company'
     | '/proformas/folder/$company'
     | '/quotations/folder/$company'
-    | '/lovable/email/auth/preview'
-    | '/lovable/email/auth/webhook'
-    | '/lovable/email/transactional/preview'
     | '/invoices/$id'
   id:
     | '__root__'
@@ -532,9 +498,6 @@ export interface FileRouteTypes {
     | '/_authenticated/invoices/folder/$company'
     | '/_authenticated/proformas/folder/$company'
     | '/_authenticated/quotations/folder/$company'
-    | '/lovable/email/auth/preview'
-    | '/lovable/email/auth/webhook'
-    | '/lovable/email/transactional/preview'
     | '/_authenticated/invoices/$id/'
   fileRoutesById: FileRoutesById
 }
@@ -545,9 +508,6 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   ApiGoogleDriveCallbackRoute: typeof ApiGoogleDriveCallbackRoute
   ApiPublicBackupCronRoute: typeof ApiPublicBackupCronRoute
-  LovableEmailAuthPreviewRoute: typeof LovableEmailAuthPreviewRoute
-  LovableEmailAuthWebhookRoute: typeof LovableEmailAuthWebhookRoute
-  LovableEmailTransactionalPreviewRoute: typeof LovableEmailTransactionalPreviewRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -825,27 +785,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedQuotationsFolderCompanyRouteImport
       parentRoute: typeof AuthenticatedQuotationsRoute
     }
-    '/lovable/email/auth/preview': {
-      id: '/lovable/email/auth/preview'
-      path: '/lovable/email/auth/preview'
-      fullPath: '/lovable/email/auth/preview'
-      preLoaderRoute: typeof LovableEmailAuthPreviewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/lovable/email/auth/webhook': {
-      id: '/lovable/email/auth/webhook'
-      path: '/lovable/email/auth/webhook'
-      fullPath: '/lovable/email/auth/webhook'
-      preLoaderRoute: typeof LovableEmailAuthWebhookRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/lovable/email/transactional/preview': {
-      id: '/lovable/email/transactional/preview'
-      path: '/lovable/email/transactional/preview'
-      fullPath: '/lovable/email/transactional/preview'
-      preLoaderRoute: typeof LovableEmailTransactionalPreviewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -994,9 +933,6 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   ApiGoogleDriveCallbackRoute: ApiGoogleDriveCallbackRoute,
   ApiPublicBackupCronRoute: ApiPublicBackupCronRoute,
-  LovableEmailAuthPreviewRoute: LovableEmailAuthPreviewRoute,
-  LovableEmailAuthWebhookRoute: LovableEmailAuthWebhookRoute,
-  LovableEmailTransactionalPreviewRoute: LovableEmailTransactionalPreviewRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
