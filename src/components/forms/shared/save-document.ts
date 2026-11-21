@@ -41,37 +41,22 @@ export async function saveDocument({
 }: SaveDocumentArgs) {
   let invId: string;
   let invNumber: string;
-  
-  if (!isChallan) {
-    const manualNumber = String(payload.invoice_number ?? "").trim();
-    const financialYearId = payload.financial_year_id;
 
-    if (!manualNumber) {
-      throw new Error("Document number is mandatory.");
-    }
+  if (!isEdit) {
+    const { data: allowed, error: permissionError } =
+      await (supabase as any).rpc(
+        "can_perform_document_action",
+        {
+          _document_kind: documentType,
+          _action: "create",
+        },
+      );
 
-    if (!financialYearId) {
-      throw new Error("Financial year is required to validate the document number.");
-    }
+    if (permissionError) throw permissionError;
 
-    let duplicateQuery = supabase
-      .from(docTable)
-      .select("id")
-      .eq("invoice_number", manualNumber)
-      .eq("financial_year_id", financialYearId);
-
-    if (isEdit && editId) {
-      duplicateQuery = duplicateQuery.neq("id", editId);
-    }
-
-    const { data: duplicate, error: duplicateError } =
-      await duplicateQuery.maybeSingle();
-
-    if (duplicateError) throw duplicateError;
-
-    if (duplicate) {
+    if (!allowed) {
       throw new Error(
-        `The document number "${manualNumber}" is already in use in this financial year.`,
+        "You do not have permission to create this document.",
       );
     }
   }
@@ -101,28 +86,81 @@ export async function saveDocument({
       .eq("invoice_id", invId);
 
     if (dErr) throw dErr;
-  } else {
-    const { data: allowed, error: permissionError } =
-      await (supabase as any).rpc(
-        "can_perform_document_action",
-        {
-          _document_kind: documentType,
-          _action: "create",
-        },
-      );
+  } else if (!isChallan) {
+    // Manual numbering for Tax Invoices, Proforma Invoices and Quotations.
+    // The database trigger assigns the financial year automatically.
+    const manualNumber = String(payload.invoice_number ?? "").trim();
 
-    if (permissionError) throw permissionError;
+    if (!manualNumber) {
+      throw new Error("Document number is mandatory.");
+    }
 
-    if (!allowed) {
+    const insertPayload: any = {
+      ...payload,
+      invoice_number: manualNumber,
+      created_by: createdBy,
+    };
+
+    if (isTaxInvoice && (importMode || pdfImported)) {
+      insertPayload.is_imported = true;
+      insertPayload.import_source = "manual";
+    }
+
+    const { data: inv, error } = await supabase
+      .from(docTable)
+      .insert(insertPayload)
+      .select()
+      .single();
+
+    if (error?.code === "23505") {
       throw new Error(
-        "You do not have permission to create this document.",
+        "This document number is already in use in this financial year.",
       );
     }
 
-    if (!isChallan) {
+    if (error) throw error;
+
+    invId = inv.id;
+    invNumber = inv.invoice_number;
+  } else {
+    // Existing automatic Challan numbering logic — preserved.
+    const slug =
+      customerName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "customer";
+
+    const { data: existing, error: existingError } = await supabase
+      .from(docTable)
+      .select("invoice_number");
+
+    if (existingError) throw existingError;
+
+    const seqRe = docPrefix
+      ? new RegExp(`^${docPrefix}(\\d+)-`, "i")
+      : /^(\d+)-/;
+
+    let seq = 0;
+
+    for (const row of existing ?? []) {
+      const match = seqRe.exec(row.invoice_number ?? "");
+
+      if (match) {
+        seq = Math.max(seq, Number(match[1]));
+      }
+    }
+
+    let inserted: any = null;
+    let lastErr: any = null;
+
+    for (let attempt = 0; attempt < 25; attempt++) {
+      seq += 1;
+
+      const invoice_number = `${docPrefix}${seq}-${slug}`;
+
       const insertPayload: any = {
         ...payload,
-        invoice_number: String(payload.invoice_number).trim(),
+        invoice_number,
         created_by: createdBy,
       };
 
@@ -137,87 +175,27 @@ export async function saveDocument({
         .select()
         .single();
 
-      if (error?.code === "23505") {
-        throw new Error(
-          "This document number is already in use in this financial year.",
-        );
+      if (!error) {
+        inserted = inv;
+        lastErr = null;
+        break;
       }
 
-      if (error) throw error;
+      lastErr = error;
 
-      invId = inv.id;
-      invNumber = inv.invoice_number;
-    } else {
-      // Existing automatic Challan numbering logic — unchanged.
-      const slug =
-        customerName
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "") || "customer";
-
-      const { data: existing } = await supabase
-        .from(docTable)
-        .select("invoice_number");
-
-      const seqRe = docPrefix
-        ? new RegExp(`^${docPrefix}(\\d+)-`, "i")
-        : /^(\d+)-/;
-
-      let seq = 0;
-
-      for (const row of existing ?? []) {
-        const match = seqRe.exec(row.invoice_number ?? "");
-        if (match) {
-          seq = Math.max(seq, Number(match[1]));
-        }
-      }
-
-      let inserted: any = null;
-      let lastErr: any = null;
-
-      for (let attempt = 0; attempt < 25; attempt++) {
-        seq += 1;
-
-        const invoice_number = `${docPrefix}${seq}-${slug}`;
-
-        const insertPayload: any = {
-          ...payload,
-          invoice_number,
-          created_by: createdBy,
-        };
-
-        if (isTaxInvoice && (importMode || pdfImported)) {
-          insertPayload.is_imported = true;
-          insertPayload.import_source = "manual";
-        }
-
-        const { data: inv, error } = await supabase
-          .from(docTable)
-          .insert(insertPayload)
-          .select()
-          .single();
-
-        if (!error) {
-          inserted = inv;
-          lastErr = null;
-          break;
-        }
-
-        lastErr = error;
-
-        if (error.code !== "23505") break;
-      }
-
-      if (!inserted) {
-        throw lastErr ??
-          new Error("Could not generate a unique invoice number");
-      }
-
-      invId = inserted.id;
-      invNumber = inserted.invoice_number;
+      if (error.code !== "23505") break;
     }
+
+    if (!inserted) {
+      throw lastErr ??
+        new Error("Could not generate a unique invoice number.");
+    }
+
+    invId = inserted.id;
+    invNumber = inserted.invoice_number;
   }
 
+  // Save document line items.
   const rows = buildDocumentItemRows(
     items,
     invId,

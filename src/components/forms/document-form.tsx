@@ -450,25 +450,7 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
         resolveProducts({ supabase, items, productTexts, products }),
       ]);
 
-      const { data: financialYear, error: financialYearError } = await supabase
-        .from("f_year")
-        .select("id")
-        .lte("start_date", invoiceDate)
-        .gte("end_date", invoiceDate)
-        .maybeSingle();
-
-      if (financialYearError) {
-        throw financialYearError;
-      }
-
-      if (!financialYear) {
-        throw new Error(
-          `No financial year is configured for invoice date ${invoiceDate}.`,
-        );
-      }
-
       const payload = buildDocumentPayload({
-        financialYearId: financialYear.id,
         invoiceType,
         invoiceDate,
         customerId: cust.id,
