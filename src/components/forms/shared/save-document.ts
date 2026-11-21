@@ -1,3 +1,4 @@
+
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildDocumentItemRows } from "./document-item-payload";
 import type { LineItem } from "./types";
@@ -40,20 +41,24 @@ export async function saveDocument({
 }: SaveDocumentArgs) {
   let invId: string;
   let invNumber: string;
-
-  // Check manual document numbers only for Tax Invoices, Proforma Invoices,
-  // and Quotations. Challan numbering is deliberately left on its old path.
+  
   if (!isChallan) {
     const manualNumber = String(payload.invoice_number ?? "").trim();
+    const financialYearId = payload.financial_year_id;
 
     if (!manualNumber) {
       throw new Error("Document number is mandatory.");
     }
 
+    if (!financialYearId) {
+      throw new Error("Financial year is required to validate the document number.");
+    }
+
     let duplicateQuery = supabase
       .from(docTable)
       .select("id")
-      .eq("invoice_number", manualNumber);
+      .eq("invoice_number", manualNumber)
+      .eq("financial_year_id", financialYearId);
 
     if (isEdit && editId) {
       duplicateQuery = duplicateQuery.neq("id", editId);
@@ -66,7 +71,7 @@ export async function saveDocument({
 
     if (duplicate) {
       throw new Error(
-        `The document number "${manualNumber}" is already in use.`,
+        `The document number "${manualNumber}" is already in use in this financial year.`,
       );
     }
   }
@@ -80,8 +85,11 @@ export async function saveDocument({
       .single();
 
     if (error?.code === "23505" && !isChallan) {
-      throw new Error("This document number is already in use.");
+      throw new Error(
+        "This document number is already in use in this financial year.",
+      );
     }
+
     if (error) throw error;
 
     invId = inv.id;
@@ -112,7 +120,6 @@ export async function saveDocument({
     }
 
     if (!isChallan) {
-      // New manual-numbering path for Tax Invoice, Proforma, and Quotation.
       const insertPayload: any = {
         ...payload,
         invoice_number: String(payload.invoice_number).trim(),
@@ -131,14 +138,17 @@ export async function saveDocument({
         .single();
 
       if (error?.code === "23505") {
-        throw new Error("This document number is already in use.");
+        throw new Error(
+          "This document number is already in use in this financial year.",
+        );
       }
+
       if (error) throw error;
 
       invId = inv.id;
       invNumber = inv.invoice_number;
     } else {
-      // Existing automatic Challan numbering logic — intentionally unchanged.
+      // Existing automatic Challan numbering logic — unchanged.
       const slug =
         customerName
           .toLowerCase()
