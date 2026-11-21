@@ -1,7 +1,5 @@
-import WordExtractor from "word-extractor";
-const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const PROMPT = `
-You extract invoice data from an Indian GST invoice or purchase-related document.
+
+const PROMPT = `You extract invoice data from an Indian GST invoice or purchase-related document.
 Return ONLY a JSON object (no markdown fences) with exactly this shape:
 {
   "customer_name": string,
@@ -72,8 +70,11 @@ Rules:
 - Do NOT use the seller's address as the customer address.
 - Preserve the complete customer address, including plot/flat number, building, street, area, city, state, and PIN code when printed.
 - Preserve meaningful address separators and line breaks where possible.
-- If the buyer's address is not present, return an empty string.
-`;
+- If the buyer's address is not present, return an empty string.`;
+
+/* -------------------------------------------------------------------------- */
+/* Types                                                                      */
+/* -------------------------------------------------------------------------- */
 
 export type ExtractedItem = {
   hsn_code: string;
@@ -112,43 +113,72 @@ export type ExtractedInvoice = {
   items: ExtractedItem[];
 };
 
-const str = (v: unknown) =>
-  typeof v === "string" ? v.trim() : "";
+/* -------------------------------------------------------------------------- */
+/* Constants                                                                  */
+/* -------------------------------------------------------------------------- */
+
+const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
+const DEFAULT_GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite"];
+const RETRY_DELAY_MS = 700;
+const NO_RETRY_STATUSES = new Set([400, 401, 402, 403, 429]);
+const PERMANENT_STATUSES = new Set([400, 401, 402, 403]);
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const NON_NUMERIC = /[^0-9.-]/g;
+const JSON_OBJECT = /\{[\s\S]*\}/;
+
+/* -------------------------------------------------------------------------- */
+/* Normalisation helpers                                                      */
+/* -------------------------------------------------------------------------- */
+
+const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
 const num = (v: unknown) => {
-  const n = Number(
-    typeof v === "string" ? v.replace(/[^0-9.-]/g, "") : v,
-  );
-
+  const n = Number(typeof v === "string" ? v.replace(NON_NUMERIC, "") : v);
   return Number.isFinite(n) ? n : 0;
 };
 
-const date = (v: unknown) =>
-  /^\d{4}-\d{2}-\d{2}$/.test(str(v)) ? str(v) : "";
+const date = (v: unknown) => {
+  const s = str(v); // trim once instead of twice
+  return ISO_DATE.test(s) ? s : "";
+};
+
 const dates = (v: unknown): string[] => {
   const values = Array.isArray(v) ? v : v ? [v] : [];
-
-  return [
-    ...new Set(
-      values
-        .map((value) => date(value))
-        .filter((value): value is string => Boolean(value)),
-    ),
-  ];
+  const out = new Set<string>();
+  for (const value of values) {
+    const d = date(value);
+    if (d) out.add(d);
+  }
+  return [...out];
 };
 
 function normalize(raw: any): ExtractedInvoice {
-  const items = Array.isArray(raw?.items) ? raw.items : [];
+  const rawItems: any[] = Array.isArray(raw?.items) ? raw.items : [];
+  const customerName = str(raw?.customer_name);
+
+  // Single pass: skip rows without a description before doing any other work
+  // (previously every row was fully normalised, then filtered).
+  const items: ExtractedItem[] = [];
+  for (const it of rawItems) {
+    const description = str(it?.description);
+    if (!description) continue;
+    items.push({
+      hsn_code: str(it?.hsn_code),
+      description,
+      quantity: num(it?.quantity) || 1,
+      uom: str(it?.uom) || "NOS",
+      unit_rate: num(it?.unit_rate),
+      discount_pct: num(it?.discount_pct),
+      tax_pct: num(it?.tax_pct),
+    });
+  }
 
   return {
     reference_challan_number: str(raw?.reference_challan_number),
-    reference_challan_dates: dates(
-      raw?.reference_challan_dates ?? raw?.reference_challan_date,
-    ),
-    customer_name: str(raw?.customer_name),
+    reference_challan_dates: dates(raw?.reference_challan_dates ?? raw?.reference_challan_date),
+    customer_name: customerName,
     customer_address: str(raw?.customer_address),
-    company_name:
-      str(raw?.customer_name) || str(raw?.company_name),
+    company_name: customerName || str(raw?.company_name),
     contact_person: str(raw?.contact_person),
     email: str(raw?.email),
     gst_number: str(raw?.gst_number).toUpperCase(),
@@ -167,61 +197,105 @@ function normalize(raw: any): ExtractedInvoice {
     delivery_mode: str(raw?.delivery_mode),
     payment_terms: str(raw?.payment_terms),
     notes: str(raw?.notes),
-    items: items
-      .map((it: any) => ({
-        hsn_code: str(it?.hsn_code),
-        description: str(it?.description),
-        quantity: num(it?.quantity) || 1,
-        uom: str(it?.uom) || "NOS",
-        unit_rate: num(it?.unit_rate),
-        discount_pct: num(it?.discount_pct),
-        tax_pct: num(it?.tax_pct),
-      }))
-      .filter((it: ExtractedItem) => it.description),
+    items,
   };
 }
 
-function apiError(status: number, body: string): Error {
+function parseContent(content: string): ExtractedInvoice {
+  // Fast path: Gemini is asked for application/json, so the whole body is
+  // normally already a JSON object and no regex scan is needed.
+  try {
+    const direct = JSON.parse(content);
+    if (direct && typeof direct === "object" && !Array.isArray(direct)) {
+      return normalize(direct);
+    }
+  } catch {
+    // Fall through to the tolerant extraction below.
+  }
+
+  const match = content.match(JSON_OBJECT);
+  if (!match) {
+    throw new Error("The AI could not find invoice data in that document.");
+  }
+  return normalize(JSON.parse(match[0]));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Error handling & retry                                                     */
+/* -------------------------------------------------------------------------- */
+
+class ProviderError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ProviderError";
+  }
+}
+
+function apiError(status: number, body: string): ProviderError {
   let message = body;
 
   try {
     const parsed = JSON.parse(body);
     message = parsed?.error?.message ?? parsed?.message ?? body;
   } catch {
-    // Keep raw body.
+    // Keep the raw response body when it is not JSON.
   }
 
   if (status === 429) {
-    return new Error("AI is rate limited right now — please retry in a moment.");
+    message = "The AI provider is rate limited or temporarily overloaded.";
+  } else if (status === 402) {
+    message = "AI usage credits are exhausted for this provider.";
+  } else if (status === 401 || status === 403) {
+    message = "The AI provider rejected the API key or access permissions.";
+  } else {
+    message = `Could not read the document: ${message?.slice(0, 300) || status}`;
   }
 
-  if (status === 402 || status === 403) {
-    return new Error(
-      message || "AI usage is currently blocked right now.",
-    );
-  }
-
-  return new Error(
-    `Could not read the document: ${message?.slice(0, 300) || status}`,
-  );
+  return new ProviderError(message, status);
 }
 
-function parseContent(content: string): ExtractedInvoice {
-  const match = content.match(/\{[\s\S]*\}/);
+const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
-  if (!match) {
-    throw new Error("The AI could not find invoice data in that document.");
+const isPermanentProviderError = (error: unknown): boolean =>
+  error instanceof ProviderError && PERMANENT_STATUSES.has(error.status);
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+async function withTransientRetry<T>(operation: () => Promise<T>, provider: string, model: string): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    // Do not retry quota, authentication, permission, or invalid-request errors.
+    if (error instanceof ProviderError && NO_RETRY_STATUSES.has(error.status)) {
+      throw error;
+    }
+    console.warn(`[Invoice AI] ${provider}/${model} failed; retrying once:`, errorMessage(error));
+    await sleep(RETRY_DELAY_MS);
+    return operation();
   }
-
-  return normalize(JSON.parse(match[0]));
 }
 
-async function extractWordText(
-  fileData: string,
-  extension: "doc" | "docx",
-): Promise<string> {
-  const base64 = fileData.slice(fileData.indexOf(",") + 1);
-  const buffer = Buffer.from(base64, "base64");
+function getModelList(configuredValue: string | undefined, defaults: string[]): string[] {
+  const configured = configuredValue
+    ?.split(",")
+    .map((model) => model.trim())
+    .filter(Boolean);
+
+  return [...new Set(configured?.length ? configured : defaults)];
+}
+
+/* -------------------------------------------------------------------------- */
+/* Word documents                                                             */
+/* -------------------------------------------------------------------------- */
+
+/** Returns the base64 payload of a data URL (or the whole string if there is no comma). */
+const stripDataUrl = (fileData: string) => fileData.slice(fileData.indexOf(",") + 1);
+
+async function extractWordText(fileData: string, extension: "doc" | "docx"): Promise<string> {
+  const buffer = Buffer.from(stripDataUrl(fileData), "base64");
 
   if (extension === "docx") {
     const mammoth = await import("mammoth");
@@ -232,35 +306,32 @@ async function extractWordText(
     if (!result.value.trim()) {
       throw new Error("No readable text was found in this Word document.");
     }
-
     return result.value;
   }
 
-  const extractor = new WordExtractor();
-  const document = await extractor.extract(buffer);
+  const { default: WordExtractor } = await import("word-extractor");
+  const document = await new WordExtractor().extract(buffer);
 
-  const sections = [
-    document.getHeaders({ includeFooters: true }),
-    document.getBody(),
-    document.getFooters(),
-  ];
-
-  const text = sections.filter(Boolean).join("\n\n").trim();
+  const text = [document.getHeaders({ includeFooters: true }), document.getBody(), document.getFooters()]
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
 
   if (!text) {
     throw new Error("No readable text was found in this Word document.");
   }
-
   return text;
 }
 
-async function extractWithGemini(
-  fileData: string,
-  apiKey: string,
-  wordText?: string,
-): Promise<ExtractedInvoice> {
-  const model = process.env["GEMINI_MODEL"] || "gemini-3.6-flash";
+/* -------------------------------------------------------------------------- */
+/* Gemini                                                                     */
+/* -------------------------------------------------------------------------- */
 
+/**
+ * Builds the serialised request body once. A PDF can be up to ~15 MB of base64;
+ * previously it was re-sliced and re-stringified for every model and every retry.
+ */
+function buildGeminiBody(fileData: string, wordText?: string): string {
   const parts: any[] = [{ text: PROMPT }];
 
   if (wordText) {
@@ -268,89 +339,31 @@ async function extractWithGemini(
       text: `Extract invoice information from the following Word document content:\n\n${wordText}`,
     });
   } else {
-    const base64 = fileData.slice(fileData.indexOf(",") + 1);
-
     parts.push({
       inline_data: {
         mime_type: "application/pdf",
-        data: base64,
+        data: stripDataUrl(fileData),
       },
     });
   }
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts,
-          },
-        ],
-        generationConfig: {
-          responseMimeType: "application/json",
-          temperature: 0,
-        },
-      }),
+  return JSON.stringify({
+    contents: [{ role: "user", parts }],
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0,
     },
-  );
-
-  if (!res.ok) {
-    throw apiError(res.status, await res.text());
-  }
-
-  const json: any = await res.json();
-
-  const content: string = (json?.candidates?.[0]?.content?.parts ?? [])
-    .map((p: any) => (typeof p?.text === "string" ? p.text : ""))
-    .join("");
-
-  return parseContent(content);
+  });
 }
 
-async function extractWithLovableGateway(
-  fileData: string,
-  apiKey: string,
-  wordText?: string,
-): Promise<ExtractedInvoice> {
-  const content: any[] = [{ type: "text", text: PROMPT }];
-
-  if (wordText) {
-    content.push({
-      type: "text",
-      text: `Extract invoice information from the following Word document content:\n\n${wordText}`,
-    });
-  } else {
-    content.push({
-      type: "file",
-      file: {
-        filename: "invoice.pdf",
-        file_data: fileData,
-      },
-    });
-  }
-
-  const res = await fetch(GATEWAY, {
+async function extractWithGemini(body: string, apiKey: string, model: string): Promise<ExtractedInvoice> {
+  const res = await fetch(`${GEMINI_ENDPOINT}/${model}:generateContent`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Lovable-API-Key": apiKey,
+      "x-goog-api-key": apiKey,
     },
-    body: JSON.stringify({
-      model: "google/gemini-3-flash",
-      messages: [
-        {
-          role: "user",
-          content,
-        },
-      ],
-    }),
+    body,
   });
 
   if (!res.ok) {
@@ -359,13 +372,19 @@ async function extractWithLovableGateway(
 
   const json: any = await res.json();
 
-  return parseContent(json?.choices?.[0]?.message?.content ?? "");
+  let content = "";
+  for (const p of json?.candidates?.[0]?.content?.parts ?? []) {
+    if (typeof p?.text === "string") content += p.text;
+  }
+
+  return parseContent(content);
 }
 
-export async function extractInvoiceFromFile(
-  fileData: string,
-  fileName: string,
-): Promise<ExtractedInvoice> {
+/* -------------------------------------------------------------------------- */
+/* Public entry point                                                         */
+/* -------------------------------------------------------------------------- */
+
+export async function extractInvoiceFromFile(fileData: string, fileName: string): Promise<ExtractedInvoice> {
   const extension = fileName.split(".").pop()?.toLowerCase();
 
   let wordText: string | undefined;
@@ -376,20 +395,45 @@ export async function extractInvoiceFromFile(
     throw new Error("Please upload a PDF, DOC, or DOCX document.");
   }
 
-  const geminiKey =
-    process.env["GEMINI_API_KEY"] || process.env["GOOGLE_API_KEY"];
+  const geminiKey = process.env["GEMINI_API_KEY"] || process.env["GOOGLE_API_KEY"];
 
-  if (geminiKey) {
-    return await extractWithGemini(fileData, geminiKey, wordText);
+  if (!geminiKey) {
+    throw new Error("AI is not configured: add GEMINI_API_KEY to this deployment's environment variables.");
   }
 
-  const lovableKey = process.env["LOVABLE_API_KEY"];
-
-  if (lovableKey) {
-    return await extractWithLovableGateway(fileData, lovableKey, wordText);
-  }
-
-  throw new Error(
-    "AI is not configured: add GEMINI_API_KEY to this deployment's environment variables.",
+  const geminiModels = getModelList(
+    process.env["GEMINI_MODELS"] || process.env["GEMINI_MODEL"],
+    DEFAULT_GEMINI_MODELS,
   );
+
+  // Serialise the request once and reuse it for every model attempt and retry.
+  const body = buildGeminiBody(fileData, wordText);
+
+  const failures: string[] = [];
+
+  // Try each configured Gemini model in order. A model-specific outage
+  // should not prevent the next configured Gemini model from being attempted.
+  for (const model of geminiModels) {
+    try {
+      console.info(`[Invoice AI] Trying Gemini model: ${model}`);
+
+      const result = await withTransientRetry(() => extractWithGemini(body, geminiKey, model), "Gemini", model);
+
+      console.info(`[Invoice AI] Gemini model succeeded: ${model}`);
+      return result;
+    } catch (error) {
+      const message = errorMessage(error);
+      failures.push(`${model}: ${message}`);
+
+      console.error(`[Invoice AI] Gemini model failed: ${model}`, message);
+
+      // Authentication, billing, permission, or invalid-request errors
+      // are unlikely to be fixed by trying another model with the same key.
+      if (isPermanentProviderError(error)) {
+        break;
+      }
+    }
+  }
+
+  throw new Error(`Could not read the document. All configured Gemini models failed. ${failures.join(" | ")}`);
 }

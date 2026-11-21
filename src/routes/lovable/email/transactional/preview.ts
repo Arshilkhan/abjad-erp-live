@@ -3,9 +3,6 @@ import { render } from '@react-email/render'
 import { createFileRoute } from '@tanstack/react-router'
 import { TEMPLATES } from '@/lib/email-templates/registry'
 
-// Renders all registered templates with their previewData.
-// Gated by LOVABLE_API_KEY — only the Go API calls this.
-
 export const Route = createFileRoute("/lovable/email/transactional/preview")({
   server: {
     handlers: {
@@ -17,8 +14,6 @@ export const Route = createFileRoute("/lovable/email/transactional/preview")({
             { status: 500 }
           )
         }
-
-        // Verify the caller is authorized with LOVABLE_API_KEY
         const authHeader = request.headers.get('Authorization')
         const token = authHeader?.replace(/^Bearer\s+/i, '')
         if (token !== apiKey) {
@@ -81,7 +76,6 @@ export const Route = createFileRoute("/lovable/email/transactional/preview")({
             })
           }
         }
-
         return Response.json({ templates: results })
       },
     },

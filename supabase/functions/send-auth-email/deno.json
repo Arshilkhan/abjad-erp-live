@@ -1,0 +1,8 @@
+
+{
+  "imports": {
+    "react": "npm:react@19.3.0",
+    "@react-email/render": "npm:@react-email/render@2.1.0",
+    "@react-email/components": "npm:@react-email/components@1.0.12"
+  }
+}

@@ -8,15 +8,12 @@ import { RecoveryEmail } from '@/lib/email-templates/recovery'
 import { EmailChangeEmail } from '@/lib/email-templates/email-change'
 import { ReauthenticationEmail } from '@/lib/email-templates/reauthentication'
 
-// Configuration
 const SITE_NAME = "ABJAD ERP"
 const SENDER_DOMAIN = "notify.abjadengineeringworks.in"
 const ROOT_DOMAIN = "abjadengineeringworks.in"
 const FROM_DOMAIN = "abjadengineeringworks.in"
 const SITE_URL = `https://${ROOT_DOMAIN}`
 
-// The SDK handler owns verification, dispatch, and retry semantics; this file
-// owns only the email decisions: subjects, templates, and per-type props.
 export const Route = createFileRoute("/lovable/email/auth/webhook")({
   server: {
     handlers: {
