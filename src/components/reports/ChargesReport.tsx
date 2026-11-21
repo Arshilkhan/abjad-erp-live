@@ -1,4 +1,5 @@
 
+import { sortByInvoiceNumber } from "./shared/invoice-sort";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -67,6 +68,8 @@ export function ChargesReport({
                 .order("invoice_date")).data ?? [],
     });
 
+    const sortedRows = sortByInvoiceNumber(rows);
+
     const totals = (rows as any[]).reduce(
         (acc: any, row: any) => ({
             freight: acc.freight + Number(row.freight ?? 0),
@@ -105,7 +108,7 @@ export function ChargesReport({
                         onClick={() =>
                             downloadCSV(
                                 `charges-${from}-${to}.csv`,
-                                rows as any[],
+                                sortedRows as any[],
                             )
                         }
                     >
@@ -154,7 +157,7 @@ export function ChargesReport({
                             </TableRow>
                         )}
 
-                        {(rows as any[]).map((row: any, index: number) => (
+                        {(sortedRows as any[]).map((row: any, index: number) => (
                             <TableRow key={index}>
                                 <TableCell className="font-mono text-xs">
                                     {billNo(row.invoice_number)}

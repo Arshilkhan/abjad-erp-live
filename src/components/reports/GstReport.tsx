@@ -1,4 +1,5 @@
 
+import { sortByInvoiceNumber } from "./shared/invoice-sort";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -49,6 +50,8 @@ export function GstReport({
                 .order("invoice_date")).data ?? [],
     });
 
+    const sortedRows = sortByInvoiceNumber(rows);
+
     const totals = rows.reduce(
         (acc, row: any) => ({
             taxable: acc.taxable + Number(row.subtotal ?? 0),
@@ -74,7 +77,7 @@ export function GstReport({
                         size="sm"
                         variant="outline"
                         onClick={() =>
-                            downloadCSV(`gstr1_${from}_${to}.csv`, rows)
+                            downloadCSV(`gstr1_${from}_${to}.csv`, sortedRows)
                         }
                     >
                         <Download className="mr-1 h-4 w-4" />
@@ -109,7 +112,7 @@ export function GstReport({
                             </TableRow>
                         )}
 
-                        {rows.map((row: any, index) => (
+                        {sortedRows.map((row: any, index) => (
                             <TableRow key={index}>
                                 <TableCell className="font-mono">
                                     {billNo(row.invoice_number)}

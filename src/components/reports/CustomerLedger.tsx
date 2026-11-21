@@ -1,4 +1,5 @@
 
+import { sortByInvoiceNumber } from "./shared/invoice-sort";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -34,8 +35,6 @@ import {
     downloadCompanyLedgerCSV,
 } from "./shared/customer-ledger-export";
 
-/* ---------------- Types ---------------- */
-
 type Customer = {
     id: string;
     customer_name: string | null;
@@ -65,16 +64,12 @@ type CustomerSummary = Customer & {
     invoiceCount: number;
 };
 
-/* ---------------- Customer Ledger ---------------- */
-
 export function CustomerLedger() {
     const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
         null,
     );
 
     const [search, setSearch] = useState("");
-
-    /* Financial years */
 
     const {
         financialYears,
@@ -84,8 +79,6 @@ export function CustomerLedger() {
         isLoading: financialYearsLoading,
         error: financialYearsError,
     } = useFinancialYears();
-
-    /* Customers */
 
     const {
         data: customers = [],
@@ -106,8 +99,6 @@ export function CustomerLedger() {
             return (data ?? []) as Customer[];
         },
     });
-
-    /* Invoices */
 
     const {
         data: invoices = [],
@@ -138,8 +129,6 @@ export function CustomerLedger() {
             return (data ?? []) as Invoice[];
         },
     });
-
-    /* Lifetime customer summary */
 
     const summary = useMemo<CustomerSummary[]>(() => {
         const invoiceMap = new Map<
@@ -188,8 +177,6 @@ export function CustomerLedger() {
             .sort((a, b) => b.outstanding - a.outstanding);
     }, [customers, invoices]);
 
-    /* Customer search */
-
     const filteredCustomers = useMemo(() => {
         const term = search.trim().toLowerCase();
 
@@ -208,23 +195,19 @@ export function CustomerLedger() {
         );
     }, [summary, search]);
 
-    /* Selected customer */
-
     const selectedCustomer = summary.find(
         (customer) => customer.id === selectedCustomerId,
     );
 
-    /* Lifetime invoices for customer detail table */
-
     const customerInvoices = useMemo(
         () =>
-            invoices.filter(
-                (invoice) => invoice.customer_id === selectedCustomerId,
+            sortByInvoiceNumber(
+                invoices.filter(
+                    (invoice) => invoice.customer_id === selectedCustomerId,
+                ),
             ),
         [invoices, selectedCustomerId],
     );
-
-    /* Financial-year filtering - exports only */
 
     const financialYearEnd = selectedFinancialYear
         ? getFinancialYearEndDate(selectedFinancialYear)
@@ -248,8 +231,6 @@ export function CustomerLedger() {
         [financialYearInvoices, selectedCustomerId],
     );
 
-    /* Prepare customer records for company-wide export */
-
     const exportCustomers = useMemo(
         () =>
             customers.map((customer) => ({
@@ -262,8 +243,6 @@ export function CustomerLedger() {
         [customers],
     );
 
-    /* Loading and error states */
-
     if (customersError || invoicesError || financialYearsError) {
         return (
             <ReportCard title="Customer Ledger">
@@ -273,8 +252,6 @@ export function CustomerLedger() {
             </ReportCard>
         );
     }
-
-    /* ---------------- Customer detail view ---------------- */
 
     if (selectedCustomerId && selectedCustomer) {
         return (
@@ -459,8 +436,6 @@ export function CustomerLedger() {
             </ReportCard>
         );
     }
-
-    /* ---------------- Customer summary view ---------------- */
 
     return (
         <ReportCard

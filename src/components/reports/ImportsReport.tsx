@@ -1,4 +1,5 @@
 
+import { sortByInvoiceNumber } from "./shared/invoice-sort";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -19,7 +20,7 @@ import { Download } from "lucide-react";
 import { ReportCard } from "./shared/ReportCard";
 import { ReportDateRange } from "./shared/ReportDateRange";
 import { ReportTable } from "./shared/ReportTable";
-import { downloadCSV, startOfYear, today } from "./shared/report-utils";
+import { downloadCSV } from "./shared/report-utils";
 
 interface ReportDateProps {
     from: string;
@@ -49,6 +50,8 @@ export function ImportsReport({
                 .order("invoice_date", { ascending: false })).data ?? [],
     });
 
+    const sortedRows = sortByInvoiceNumber(rows);
+
     const total = (rows as any[]).reduce(
         (sum: number, row: any) =>
             sum + Number(row.grand_total),
@@ -72,7 +75,7 @@ export function ImportsReport({
                         onClick={() =>
                             downloadCSV(
                                 `imports-${from}-${to}.csv`,
-                                rows as any[],
+                                sortedRows as any[],
                             )
                         }
                     >
@@ -107,7 +110,7 @@ export function ImportsReport({
                             </TableRow>
                         )}
 
-                        {(rows as any[]).map((row: any, index: number) => (
+                        {(sortedRows as any[]).map((row: any, index: number) => (
                             <TableRow key={index}>
                                 <TableCell className="font-mono text-xs">
                                     {billNo(row.invoice_number)}

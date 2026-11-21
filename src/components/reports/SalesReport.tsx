@@ -1,4 +1,5 @@
 
+import { sortByInvoiceNumber } from "./shared/invoice-sort";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -49,6 +50,8 @@ export function SalesReport({
                 .order("invoice_date")).data ?? [],
     });
 
+    const sortedRows = sortByInvoiceNumber(rows);
+
     const totals = rows.reduce(
         (acc, row: any) => ({
             net: acc.net + Number(row.subtotal ?? 0),
@@ -77,7 +80,7 @@ export function SalesReport({
                         size="sm"
                         variant="outline"
                         onClick={() =>
-                            downloadCSV(`sales_${from}_${to}.csv`, rows)
+                            downloadCSV(`sales_${from}_${to}.csv`, sortedRows)
                         }
                     >
                         <Download className="mr-1 h-4 w-4" />
@@ -112,7 +115,7 @@ export function SalesReport({
                             </TableRow>
                         )}
 
-                        {rows.map((row: any, index) => (
+                        {sortedRows.map((row: any, index) => (
                             <TableRow key={index}>
                                 <TableCell className="font-mono">
                                     {billNo(row.invoice_number)}
@@ -140,7 +143,7 @@ export function SalesReport({
 
                         {rows.length > 0 && (
                             <TableRow className="bg-muted/40 font-semibold">
-                                <TableCell colSpan={3} className="text-right">
+                                <TableCell colSpan={4} className="text-right">
                                     Totals
                                 </TableCell>
                                 <TableCell className="text-right tabular-nums">

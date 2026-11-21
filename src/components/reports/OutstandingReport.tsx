@@ -1,4 +1,5 @@
 
+import { sortByInvoiceNumber } from "./shared/invoice-sort";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -45,7 +46,9 @@ export function OutstandingReport({
         .order("invoice_date")).data ?? [],
   });
 
-  const enriched = rows.map((row: any) => {
+  const sortedRows = sortByInvoiceNumber(rows);
+
+  const enriched = sortedRows.map((row: any) => {
     const due =
       Number(row.grand_total) - Number(row.amount_paid);
 
@@ -53,7 +56,7 @@ export function OutstandingReport({
       0,
       Math.floor(
         (Date.now() - new Date(row.invoice_date).getTime()) /
-          86400000,
+        86400000,
       ),
     );
 
@@ -119,11 +122,10 @@ export function OutstandingReport({
                   {formatINR(row.due)}
                 </TableCell>
                 <TableCell
-                  className={`text-right ${
-                    row.days > 30
-                      ? "text-warning font-semibold"
-                      : ""
-                  }`}
+                  className={`text-right ${row.days > 30
+                    ? "text-warning font-semibold"
+                    : ""
+                    }`}
                 >
                   {row.days}d
                 </TableCell>

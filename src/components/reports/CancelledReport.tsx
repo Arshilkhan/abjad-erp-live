@@ -1,4 +1,5 @@
 
+import { sortByInvoiceNumber } from "./shared/invoice-sort";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -49,6 +50,8 @@ export function CancelledReport({
                 .order("cancelled_at", { ascending: false })).data ?? [],
     });
 
+    const sortedRows = sortByInvoiceNumber(rows);
+
     const total = rows.reduce(
         (sum: number, row: any) =>
             sum + Number(row.grand_total),
@@ -72,7 +75,7 @@ export function CancelledReport({
                         onClick={() =>
                             downloadCSV(
                                 `cancelled-${from}-${to}.csv`,
-                                rows as any[],
+                                sortedRows as any[],
                             )
                         }
                     >
@@ -107,7 +110,7 @@ export function CancelledReport({
                             </TableRow>
                         )}
 
-                        {rows.map((row: any, index: number) => (
+                        {sortedRows.map((row: any, index: number) => (
                             <TableRow key={index}>
                                 <TableCell className="font-mono text-xs">
                                     {billNo(row.invoice_number)}

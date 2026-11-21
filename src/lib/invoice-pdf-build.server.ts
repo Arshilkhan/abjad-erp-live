@@ -233,9 +233,9 @@ export async function buildInvoicePdf(
     const metadataRows: Array<[string, string]> = [
       ['PO No.', invoice['po_number'] ?? ''],
       ['PO DATE', invoice['po_date'] ? formatDate(invoice['po_date']) : ''],
-      ['Ref. Challan No.', invoice['reference_challan_number'] ?? ''],
+      ['Challan No.', invoice['reference_challan_number'] ?? ''],
       [
-        'Ref. Challan Date',
+        'Challan Date',
         invoice['reference_challan_date']
           ? formatDate(invoice['reference_challan_date'])
           : '',

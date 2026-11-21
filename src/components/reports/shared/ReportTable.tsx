@@ -2,17 +2,27 @@
 import type { ReactNode } from "react";
 
 interface ReportTableProps {
-  children: ReactNode;
-  className?: string;
+    children: ReactNode;
+    className?: string;
+    inset?: boolean;
 }
 
 export function ReportTable({
-  children,
-  className = "",
+    children,
+    className = "",
+    inset = true,
 }: ReportTableProps) {
-  return (
-    <div className={`w-full overflow-x-auto ${className}`}>
-      {children}
-    </div>
-  );
+    return (
+        <div
+            className={[
+                "box-border min-w-0 max-w-full overflow-x-auto",
+                inset
+                    ? "mx-3 w-[calc(100%-1.5rem)]"
+                    : "w-full",
+                className,
+            ].join(" ")}
+        >
+            {children}
+        </div>
+    );
 }
