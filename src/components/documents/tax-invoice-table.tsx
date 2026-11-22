@@ -134,178 +134,180 @@ export function TaxInvoiceTable({
     }, [rows, sortField, sortDirection]);
 
     return (
-        <Table>
-            <TableHeader>
-                <TableRow>
-                    <TableHead
-                        className="cursor-pointer select-none"
-                        onClick={() => handleSort("invoice")}
-                    >
-                        Invoice #
-                    </TableHead>
-
-                    <TableHead
-                        className="cursor-pointer select-none"
-                        onClick={() => handleSort("customer")}
-                    >
-                        Customer
-                    </TableHead>
-
-                    <TableHead
-                        className="cursor-pointer select-none"
-                        onClick={() => handleSort("date")}
-                    >
-                        Date
-                    </TableHead>
-
-                    <TableHead
-                        className="cursor-pointer select-none text-right"
-                        onClick={() => handleSort("total")}
-                    >
-                        Total
-                    </TableHead>
-
-                    <TableHead>Status</TableHead>
-
-                    <TableHead className="w-24 text-right">
-                        Actions
-                    </TableHead>
-                </TableRow>
-            </TableHeader>
-
-            <TableBody>
-                {isLoading && (
+        <div className="mx-3">
+            <Table>
+                <TableHeader>
                     <TableRow>
-                        <TableCell
-                            colSpan={6}
-                            className="py-8 text-center text-muted-foreground"
+                        <TableHead
+                            className="cursor-pointer select-none"
+                            onClick={() => handleSort("invoice")}
                         >
-                            Loading…
-                        </TableCell>
-                    </TableRow>
-                )}
+                            Invoice #
+                        </TableHead>
 
-                {!isLoading && rows.length === 0 && (
-                    <TableRow>
-                        <TableCell
-                            colSpan={6}
-                            className="py-10 text-center text-muted-foreground"
+                        <TableHead
+                            className="cursor-pointer select-none"
+                            onClick={() => handleSort("customer")}
                         >
-                            No tax invoices here yet.
-                            {canCreateTaxInvoice && (
-                                <>
-                                    {" "}
-                                    <Link
-                                        to="/invoices/new"
-                                        search={{ kind: "tax_invoice" }}
-                                        className="text-primary hover:underline"
-                                    >
-                                        Create one
-                                    </Link>.
-                                </>
-                            )}
-                        </TableCell>
+                            Customer
+                        </TableHead>
+
+                        <TableHead
+                            className="cursor-pointer select-none"
+                            onClick={() => handleSort("date")}
+                        >
+                            Date
+                        </TableHead>
+
+                        <TableHead
+                            className="cursor-pointer select-none text-right"
+                            onClick={() => handleSort("total")}
+                        >
+                            Total
+                        </TableHead>
+
+                        <TableHead>Status</TableHead>
+
+                        <TableHead className="w-24 text-right">
+                            Actions
+                        </TableHead>
                     </TableRow>
-                )}
+                </TableHeader>
 
-                {sortedRows.map((r: any) => (
-                    <TableRow
-                        key={r.id}
-                        className={`hover:bg-muted/40 ${r.status === "cancelled"
-                                ? "opacity-60"
-                                : ""
-                            }`}
-                    >
-                        <TableCell className="font-mono text-sm font-medium">
-                            <Link
-                                to="/invoices/$id"
-                                params={{ id: r.id }}
-                                search={{ kind: "tax_invoice" }}
-                                className="text-primary hover:underline"
+                <TableBody>
+                    {isLoading && (
+                        <TableRow>
+                            <TableCell
+                                colSpan={6}
+                                className="py-8 text-center text-muted-foreground"
                             >
-                                {billNo(r.invoice_number)}
-                            </Link>
+                                Loading…
+                            </TableCell>
+                        </TableRow>
+                    )}
 
-                            {r.is_imported && (
-                                <Badge
-                                    variant="outline"
-                                    className="ml-2 text-[9px] uppercase"
-                                >
-                                    Imported
-                                </Badge>
-                            )}
-                        </TableCell>
-
-                        <TableCell>
-                            {r.customer_name_snapshot ?? "—"}
-                        </TableCell>
-
-                        <TableCell>
-                            {formatDate(r.invoice_date)}
-                        </TableCell>
-
-                        <TableCell className="text-right tabular-nums font-semibold">
-                            {formatINR(r.grand_total)}
-                        </TableCell>
-
-                        <TableCell>
-                            <Badge
-                                variant="outline"
-                                className={`text-[10px] font-medium uppercase ${taxInvoiceStatusStyles[r.status] ?? ""
-                                    }`}
+                    {!isLoading && rows.length === 0 && (
+                        <TableRow>
+                            <TableCell
+                                colSpan={6}
+                                className="py-10 text-center text-muted-foreground"
                             >
-                                {r.status}
-                            </Badge>
-                        </TableCell>
-
-                        <TableCell className="text-right">
-                            <div className="flex justify-end gap-1">
-                                {r.status !== "cancelled" && (
+                                No tax invoices here yet.
+                                {canCreateTaxInvoice && (
                                     <>
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            asChild
-                                            title="Edit"
+                                        {" "}
+                                        <Link
+                                            to="/invoices/new"
+                                            search={{ kind: "tax_invoice" }}
+                                            className="text-primary hover:underline"
                                         >
-                                            <Link
-                                                to="/invoices/$id/edit"
-                                                params={{ id: r.id }}
-                                                search={{
-                                                    kind: "tax_invoice",
-                                                }}
-                                            >
-                                                <Pencil className="h-3.5 w-3.5" />
-                                            </Link>
-                                        </Button>
-
-                                        {canCancelTaxInvoice && (
-                                            <CancelInvoiceDialog
-                                                invoiceId={r.id}
-                                                invoiceNumber={r.invoice_number}
-                                                onCancelled={() =>
-                                                    qc.invalidateQueries({
-                                                        queryKey: ["invoices"],
-                                                    })
-                                                }
-                                                trigger={
-                                                    <Button
-                                                        size="icon"
-                                                        variant="ghost"
-                                                        title="Cancel invoice"
-                                                    >
-                                                        <Ban className="h-3.5 w-3.5 text-destructive" />
-                                                    </Button>
-                                                }
-                                            />
-                                        )}
+                                            Create one
+                                        </Link>.
                                     </>
                                 )}
-                            </div>
-                        </TableCell>
-                    </TableRow>
-                ))}
-            </TableBody>
-        </Table>
+                            </TableCell>
+                        </TableRow>
+                    )}
+
+                    {sortedRows.map((r: any) => (
+                        <TableRow
+                            key={r.id}
+                            className={`hover:bg-muted/40 ${r.status === "cancelled"
+                                ? "opacity-60"
+                                : ""
+                                }`}
+                        >
+                            <TableCell className="font-mono text-sm font-medium">
+                                <Link
+                                    to="/invoices/$id"
+                                    params={{ id: r.id }}
+                                    search={{ kind: "tax_invoice" }}
+                                    className="text-primary hover:underline"
+                                >
+                                    {billNo(r.invoice_number)}
+                                </Link>
+
+                                {r.is_imported && (
+                                    <Badge
+                                        variant="outline"
+                                        className="ml-2 text-[9px] uppercase"
+                                    >
+                                        Imported
+                                    </Badge>
+                                )}
+                            </TableCell>
+
+                            <TableCell>
+                                {r.customer_name_snapshot ?? "—"}
+                            </TableCell>
+
+                            <TableCell>
+                                {formatDate(r.invoice_date)}
+                            </TableCell>
+
+                            <TableCell className="text-right tabular-nums font-semibold">
+                                {formatINR(r.grand_total)}
+                            </TableCell>
+
+                            <TableCell>
+                                <Badge
+                                    variant="outline"
+                                    className={`text-[10px] font-medium uppercase ${taxInvoiceStatusStyles[r.status] ?? ""
+                                        }`}
+                                >
+                                    {r.status}
+                                </Badge>
+                            </TableCell>
+
+                            <TableCell className="text-right">
+                                <div className="flex justify-end gap-1">
+                                    {r.status !== "cancelled" && (
+                                        <>
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                asChild
+                                                title="Edit"
+                                            >
+                                                <Link
+                                                    to="/invoices/$id/edit"
+                                                    params={{ id: r.id }}
+                                                    search={{
+                                                        kind: "tax_invoice",
+                                                    }}
+                                                >
+                                                    <Pencil className="h-3.5 w-3.5" />
+                                                </Link>
+                                            </Button>
+
+                                            {canCancelTaxInvoice && (
+                                                <CancelInvoiceDialog
+                                                    invoiceId={r.id}
+                                                    invoiceNumber={r.invoice_number}
+                                                    onCancelled={() =>
+                                                        qc.invalidateQueries({
+                                                            queryKey: ["invoices"],
+                                                        })
+                                                    }
+                                                    trigger={
+                                                        <Button
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            title="Cancel invoice"
+                                                        >
+                                                            <Ban className="h-3.5 w-3.5 text-destructive" />
+                                                        </Button>
+                                                    }
+                                                />
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            </TableCell>
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+        </div>
     );
 }

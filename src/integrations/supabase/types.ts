@@ -2140,6 +2140,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      bulk_import_tax_invoice: {
+        Args: {
+          p_invoice: Json;
+          p_items: Json;
+        };
+        Returns: string;
+      };
       amount_in_words: { Args: { amount: number }; Returns: string }
       can_edit_panel: { Args: { _panel: string }; Returns: boolean }
       can_write: { Args: { _user_id?: string }; Returns: boolean }

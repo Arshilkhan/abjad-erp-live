@@ -56,10 +56,22 @@ function FolderPage() {
       </Link>
       <Card>
         <CardContent className="p-0">
-          <div className="border-b p-3">
-            <div className="relative max-w-sm">
+
+          <div className="mx-3 flex flex-col gap-2 border-b px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative w-full sm:max-w-md">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input className="h-9 pl-9" placeholder="Search in this folder…" value={q} onChange={(e) => setQ(e.target.value)} />
+              <Input
+                className="h-9 pl-9"
+                placeholder="Search in this folder…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+              />
+            </div>
+
+            <div className="flex items-center gap-2 sm:shrink-0">
+              <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+                Financial Year
+              </span>
               <FinancialYearSelector
                 financialYears={financialYears}
                 selectedFinancialYearId={selectedFinancialYearId}
@@ -68,6 +80,7 @@ function FolderPage() {
               />
             </div>
           </div>
+
           <TaxInvoiceTable rows={rows} isLoading={isLoading} />
         </CardContent>
       </Card>

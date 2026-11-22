@@ -1,4 +1,3 @@
-
 const PROMPT = `You extract invoice data from an Indian GST invoice or purchase-related document.
 Return ONLY a JSON object (no markdown fences) with exactly this shape:
 {
@@ -72,10 +71,6 @@ Rules:
 - Preserve meaningful address separators and line breaks where possible.
 - If the buyer's address is not present, return an empty string.`;
 
-/* -------------------------------------------------------------------------- */
-/* Types                                                                      */
-/* -------------------------------------------------------------------------- */
-
 export type ExtractedItem = {
   hsn_code: string;
   description: string;
@@ -113,22 +108,16 @@ export type ExtractedInvoice = {
   items: ExtractedItem[];
 };
 
-/* -------------------------------------------------------------------------- */
-/* Constants                                                                  */
-/* -------------------------------------------------------------------------- */
-
 const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite"];
+const OPENAI_RESPONSES_ENDPOINT = "https://api.openai.com/v1/responses";
+const OPENAI_FALLBACK_MODEL = "gpt-6.1-sol";
 const RETRY_DELAY_MS = 700;
 const NO_RETRY_STATUSES = new Set([400, 401, 402, 403, 429]);
 const PERMANENT_STATUSES = new Set([400, 401, 402, 403]);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const NON_NUMERIC = /[^0-9.-]/g;
 const JSON_OBJECT = /\{[\s\S]*\}/;
-
-/* -------------------------------------------------------------------------- */
-/* Normalisation helpers                                                      */
-/* -------------------------------------------------------------------------- */
 
 const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
@@ -202,15 +191,12 @@ function normalize(raw: any): ExtractedInvoice {
 }
 
 function parseContent(content: string): ExtractedInvoice {
-  // Fast path: Gemini is asked for application/json, so the whole body is
-  // normally already a JSON object and no regex scan is needed.
   try {
     const direct = JSON.parse(content);
     if (direct && typeof direct === "object" && !Array.isArray(direct)) {
       return normalize(direct);
     }
   } catch {
-    // Fall through to the tolerant extraction below.
   }
 
   const match = content.match(JSON_OBJECT);
@@ -219,10 +205,6 @@ function parseContent(content: string): ExtractedInvoice {
   }
   return normalize(JSON.parse(match[0]));
 }
-
-/* -------------------------------------------------------------------------- */
-/* Error handling & retry                                                     */
-/* -------------------------------------------------------------------------- */
 
 class ProviderError extends Error {
   constructor(
@@ -287,11 +269,6 @@ function getModelList(configuredValue: string | undefined, defaults: string[]): 
   return [...new Set(configured?.length ? configured : defaults)];
 }
 
-/* -------------------------------------------------------------------------- */
-/* Word documents                                                             */
-/* -------------------------------------------------------------------------- */
-
-/** Returns the base64 payload of a data URL (or the whole string if there is no comma). */
 const stripDataUrl = (fileData: string) => fileData.slice(fileData.indexOf(",") + 1);
 
 async function extractWordText(fileData: string, extension: "doc" | "docx"): Promise<string> {
@@ -322,15 +299,6 @@ async function extractWordText(fileData: string, extension: "doc" | "docx"): Pro
   }
   return text;
 }
-
-/* -------------------------------------------------------------------------- */
-/* Gemini                                                                     */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Builds the serialised request body once. A PDF can be up to ~15 MB of base64;
- * previously it was re-sliced and re-stringified for every model and every retry.
- */
 function buildGeminiBody(fileData: string, wordText?: string): string {
   const parts: any[] = [{ text: PROMPT }];
 
@@ -380,11 +348,107 @@ async function extractWithGemini(body: string, apiKey: string, model: string): P
   return parseContent(content);
 }
 
-/* -------------------------------------------------------------------------- */
-/* Public entry point                                                         */
-/* -------------------------------------------------------------------------- */
+function openAiApiError(status: number, body: string): ProviderError {
+  let detail = body;
+
+  try {
+    const parsed = JSON.parse(body);
+    detail = parsed?.error?.message ?? parsed?.message ?? body;
+  } catch {
+    // Keep the raw response body when it is not JSON.
+  }
+
+  let message: string;
+  if (status === 429) {
+    message = "OpenAI API is rate limited. Check your API usage limits and billing.";
+  } else if (status === 401 || status === 403) {
+    message = "OpenAI rejected the API key or the key does not have permission to use the model.";
+  } else if (status === 402) {
+    message = "OpenAI API billing or usage credits are unavailable.";
+  } else {
+    message = `OpenAI extraction failed: ${detail?.slice(0, 300) || status}`;
+  }
+
+  return new ProviderError(message, status);
+}
+
+function getOpenAiOutputText(response: any): string {
+  if (typeof response?.output_text === "string" && response.output_text.trim()) {
+    return response.output_text;
+  }
+
+  const chunks: string[] = [];
+  for (const item of response?.output ?? []) {
+    if (item?.type !== "message" || !Array.isArray(item?.content)) continue;
+    for (const content of item.content) {
+      if (content?.type === "output_text" && typeof content.text === "string") {
+        chunks.push(content.text);
+      }
+    }
+  }
+
+  return chunks.join("\n");
+}
+
+async function extractWithOpenAI(
+  fileData: string,
+  fileName: string,
+  wordText: string | undefined,
+  apiKey: string,
+): Promise<ExtractedInvoice> {
+  const extension = fileName.split(".").pop()?.toLowerCase();
+  const content: Array<Record<string, unknown>> = [
+    { type: "input_text", text: PROMPT },
+  ];
+
+  if (wordText) {
+    content.push({
+      type: "input_text",
+      text: `Extract invoice information from the following Word document content. Preserve table row order and associations between challan numbers and dates:\n\n${wordText}`,
+    });
+  } else {
+    content.push({
+      type: "input_file",
+      filename: fileName.toLowerCase().endsWith(".pdf") ? fileName : `invoice.${extension ?? "pdf"}`,
+      file_data: fileData,
+    });
+  }
+
+  const response = await fetch(OPENAI_RESPONSES_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: OPENAI_FALLBACK_MODEL,
+      input: [{ role: "user", content }],
+    }),
+  });
+
+  if (!response.ok) {
+    throw openAiApiError(response.status, await response.text());
+  }
+
+  const json: any = await response.json();
+  const output = getOpenAiOutputText(json);
+
+  if (!output.trim()) {
+    throw new Error("OpenAI returned an empty extraction response.");
+  }
+
+  return parseContent(output);
+}
 
 export async function extractInvoiceFromFile(fileData: string, fileName: string): Promise<ExtractedInvoice> {
+  console.info("[Invoice AI] Extraction function entered", {
+    fileName,
+    fileSize: fileData?.length ?? 0,
+    hasGeminiKey: Boolean(
+      process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
+    ),
+    hasOpenAIKey: Boolean(process.env.OPENAI_API_KEY),
+  });
   const extension = fileName.split(".").pop()?.toLowerCase();
 
   let wordText: string | undefined;
@@ -395,45 +459,60 @@ export async function extractInvoiceFromFile(fileData: string, fileName: string)
     throw new Error("Please upload a PDF, DOC, or DOCX document.");
   }
 
+  const failures: string[] = [];
   const geminiKey = process.env["GEMINI_API_KEY"] || process.env["GOOGLE_API_KEY"];
 
-  if (!geminiKey) {
-    throw new Error("AI is not configured: add GEMINI_API_KEY to this deployment's environment variables.");
-  }
+  if (geminiKey) {
+    const geminiModels = getModelList(
+      process.env["GEMINI_MODELS"] || process.env["GEMINI_MODEL"],
+      DEFAULT_GEMINI_MODELS,
+    );
+    const body = buildGeminiBody(fileData, wordText);
 
-  const geminiModels = getModelList(
-    process.env["GEMINI_MODELS"] || process.env["GEMINI_MODEL"],
-    DEFAULT_GEMINI_MODELS,
-  );
-
-  // Serialise the request once and reuse it for every model attempt and retry.
-  const body = buildGeminiBody(fileData, wordText);
-
-  const failures: string[] = [];
-
-  // Try each configured Gemini model in order. A model-specific outage
-  // should not prevent the next configured Gemini model from being attempted.
-  for (const model of geminiModels) {
-    try {
-      console.info(`[Invoice AI] Trying Gemini model: ${model}`);
-
-      const result = await withTransientRetry(() => extractWithGemini(body, geminiKey, model), "Gemini", model);
-
-      console.info(`[Invoice AI] Gemini model succeeded: ${model}`);
-      return result;
-    } catch (error) {
-      const message = errorMessage(error);
-      failures.push(`${model}: ${message}`);
-
-      console.error(`[Invoice AI] Gemini model failed: ${model}`, message);
-
-      // Authentication, billing, permission, or invalid-request errors
-      // are unlikely to be fixed by trying another model with the same key.
-      if (isPermanentProviderError(error)) {
-        break;
+    for (const model of geminiModels) {
+      try {
+        console.info(`[Invoice AI] Trying Gemini model: ${model}`);
+        const result = await withTransientRetry(
+          () => extractWithGemini(body, geminiKey, model),
+          "Gemini",
+          model,
+        );
+        console.info(`[Invoice AI] Gemini model succeeded: ${model}`);
+        return result;
+      } catch (error) {
+        const message = errorMessage(error);
+        failures.push(`Gemini ${model}: ${message}`);
+        console.error(`[Invoice AI] Gemini model failed: ${model}`, message);
+        if (isPermanentProviderError(error)) break;
       }
     }
+  } else {
+    failures.push("Gemini: GEMINI_API_KEY / GOOGLE_API_KEY is not configured.");
+    console.warn("[Invoice AI] Gemini key is missing; moving to OpenAI fallback.");
   }
 
-  throw new Error(`Could not read the document. All configured Gemini models failed. ${failures.join(" | ")}`);
+  const openAiKey = process.env["OPENAI_API_KEY"];
+  if (!openAiKey) {
+    failures.push("OpenAI: OPENAI_API_KEY is not configured.");
+    throw new Error(
+      `Invoice extraction failed. Configure OPENAI_API_KEY to enable the fallback. ${failures.join(" | ")}`,
+    );
+  }
+
+  try {
+    console.info(`[Invoice AI] Trying OpenAI fallback model: ${OPENAI_FALLBACK_MODEL}`);
+    const result = await withTransientRetry(
+      () => extractWithOpenAI(fileData, fileName, wordText, openAiKey),
+      "OpenAI",
+      OPENAI_FALLBACK_MODEL,
+    );
+    console.info(`[Invoice AI] OpenAI fallback succeeded: ${OPENAI_FALLBACK_MODEL}`);
+    return result;
+  } catch (error) {
+    const message = errorMessage(error);
+    console.error(`[Invoice AI] OpenAI fallback failed: ${message}`);
+    throw new Error(
+      `Could not read the document. Gemini and OpenAI extraction both failed. ${[...failures, `OpenAI ${OPENAI_FALLBACK_MODEL}: ${message}`].join(" | ")}`,
+    );
+  }
 }

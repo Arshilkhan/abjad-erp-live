@@ -32,6 +32,7 @@ import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedUsersRouteImport } from './routes/_authenticated/users'
 import { Route as AuthenticatedChallansIndexRouteImport } from './routes/_authenticated/challans.index'
 import { Route as AuthenticatedChallansNewRouteImport } from './routes/_authenticated/challans.new'
+import { Route as AuthenticatedInvoicesBulkImportRouteImport } from './routes/_authenticated/invoices.bulk-import'
 import { Route as AuthenticatedInvoicesImportRouteImport } from './routes/_authenticated/invoices.import'
 import { Route as AuthenticatedInvoicesNewRouteImport } from './routes/_authenticated/invoices.new'
 import { Route as AuthenticatedProformasIndexRouteImport } from './routes/_authenticated/proformas.index'
@@ -168,6 +169,12 @@ const AuthenticatedChallansNewRoute =
     path: '/new',
     getParentRoute: () => AuthenticatedChallansRoute,
   } as any)
+const AuthenticatedInvoicesBulkImportRoute =
+  AuthenticatedInvoicesBulkImportRouteImport.update({
+    id: '/bulk-import',
+    path: '/bulk-import',
+    getParentRoute: () => AuthenticatedInvoicesRoute,
+  } as any)
 const AuthenticatedInvoicesImportRoute =
   AuthenticatedInvoicesImportRouteImport.update({
     id: '/import',
@@ -285,6 +292,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AuthenticatedSettingsRoute
   '/users': typeof AuthenticatedUsersRoute
   '/challans/new': typeof AuthenticatedChallansNewRoute
+  '/invoices/bulk-import': typeof AuthenticatedInvoicesBulkImportRoute
   '/invoices/import': typeof AuthenticatedInvoicesImportRoute
   '/invoices/new': typeof AuthenticatedInvoicesNewRoute
   '/proformas/new': typeof AuthenticatedProformasNewRoute
@@ -321,6 +329,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthenticatedSettingsRoute
   '/users': typeof AuthenticatedUsersRoute
   '/challans/new': typeof AuthenticatedChallansNewRoute
+  '/invoices/bulk-import': typeof AuthenticatedInvoicesBulkImportRoute
   '/invoices/import': typeof AuthenticatedInvoicesImportRoute
   '/invoices/new': typeof AuthenticatedInvoicesNewRoute
   '/proformas/new': typeof AuthenticatedProformasNewRoute
@@ -363,6 +372,7 @@ export interface FileRoutesById {
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/users': typeof AuthenticatedUsersRoute
   '/_authenticated/challans/new': typeof AuthenticatedChallansNewRoute
+  '/_authenticated/invoices/bulk-import': typeof AuthenticatedInvoicesBulkImportRoute
   '/_authenticated/invoices/import': typeof AuthenticatedInvoicesImportRoute
   '/_authenticated/invoices/new': typeof AuthenticatedInvoicesNewRoute
   '/_authenticated/proformas/new': typeof AuthenticatedProformasNewRoute
@@ -405,6 +415,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/users'
     | '/challans/new'
+    | '/invoices/bulk-import'
     | '/invoices/import'
     | '/invoices/new'
     | '/proformas/new'
@@ -441,6 +452,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/users'
     | '/challans/new'
+    | '/invoices/bulk-import'
     | '/invoices/import'
     | '/invoices/new'
     | '/proformas/new'
@@ -482,6 +494,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings'
     | '/_authenticated/users'
     | '/_authenticated/challans/new'
+    | '/_authenticated/invoices/bulk-import'
     | '/_authenticated/invoices/import'
     | '/_authenticated/invoices/new'
     | '/_authenticated/proformas/new'
@@ -673,6 +686,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedChallansNewRouteImport
       parentRoute: typeof AuthenticatedChallansRoute
     }
+    '/_authenticated/invoices/bulk-import': {
+      id: '/_authenticated/invoices/bulk-import'
+      path: '/bulk-import'
+      fullPath: '/invoices/bulk-import'
+      preLoaderRoute: typeof AuthenticatedInvoicesBulkImportRouteImport
+      parentRoute: typeof AuthenticatedInvoicesRoute
+    }
     '/_authenticated/invoices/import': {
       id: '/_authenticated/invoices/import'
       path: '/import'
@@ -807,6 +827,7 @@ const AuthenticatedChallansRouteWithChildren =
   )
 
 interface AuthenticatedInvoicesRouteChildren {
+  AuthenticatedInvoicesBulkImportRoute: typeof AuthenticatedInvoicesBulkImportRoute
   AuthenticatedInvoicesImportRoute: typeof AuthenticatedInvoicesImportRoute
   AuthenticatedInvoicesNewRoute: typeof AuthenticatedInvoicesNewRoute
   AuthenticatedInvoicesIdEditRoute: typeof AuthenticatedInvoicesIdEditRoute
@@ -815,6 +836,7 @@ interface AuthenticatedInvoicesRouteChildren {
 }
 
 const AuthenticatedInvoicesRouteChildren: AuthenticatedInvoicesRouteChildren = {
+  AuthenticatedInvoicesBulkImportRoute: AuthenticatedInvoicesBulkImportRoute,
   AuthenticatedInvoicesImportRoute: AuthenticatedInvoicesImportRoute,
   AuthenticatedInvoicesNewRoute: AuthenticatedInvoicesNewRoute,
   AuthenticatedInvoicesIdEditRoute: AuthenticatedInvoicesIdEditRoute,
