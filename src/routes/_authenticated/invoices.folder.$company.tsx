@@ -7,6 +7,8 @@ import { ChevronLeft, Search } from "lucide-react";
 import { TaxInvoiceTable } from "@/components/documents/tax-invoice-table";
 import { useInvoiceFolders } from "@/lib/invoice-folders";
 import { formatINR } from "@/lib/format";
+import { FinancialYearSelector } from "@/components/reports/shared/FinancialYearSelector";
+import { useFinancialYears } from "@/components/reports/shared/useFinancialYears";
 
 export const Route = createFileRoute("/_authenticated/invoices/folder/$company")({
   head: () => ({ meta: [{ title: "Company Folder — ABJAD ERP" }] }),
@@ -15,7 +17,21 @@ export const Route = createFileRoute("/_authenticated/invoices/folder/$company")
 
 function FolderPage() {
   const { company } = useParams({ from: "/_authenticated/invoices/folder/$company" });
-  const { folders, isLoading } = useInvoiceFolders({ table: "invoices", kind: "tax_invoice" });
+  const {
+    financialYears,
+    selectedFinancialYear,
+    selectedFinancialYearId,
+    setSelectedFinancialYearId,
+    isLoading: isFinancialYearsLoading,
+  } = useFinancialYears();
+
+  const { folders, isLoading: isDocumentsLoading } = useInvoiceFolders({
+    table: "invoices",
+    kind: "tax_invoice",
+    financialYear: selectedFinancialYear,
+  });
+
+  const isLoading = isFinancialYearsLoading || isDocumentsLoading;
   const [q, setQ] = useState("");
   const folder = folders.find((f) => f.slug === company);
 
@@ -44,6 +60,12 @@ function FolderPage() {
             <div className="relative max-w-sm">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input className="h-9 pl-9" placeholder="Search in this folder…" value={q} onChange={(e) => setQ(e.target.value)} />
+              <FinancialYearSelector
+                financialYears={financialYears}
+                selectedFinancialYearId={selectedFinancialYearId}
+                onChange={setSelectedFinancialYearId}
+                disabled={isFinancialYearsLoading}
+              />
             </div>
           </div>
           <TaxInvoiceTable rows={rows} isLoading={isLoading} />

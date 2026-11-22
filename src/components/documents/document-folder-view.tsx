@@ -13,6 +13,8 @@ import { TaxInvoiceTable } from "@/components/documents/tax-invoice-table";
 import { ProformaTable } from "@/components/documents/proforma-table";
 import { QuotationTable } from "@/components/documents/quotation-table";
 import { ChallanTable } from "@/components/documents/challan-table";
+import { FinancialYearSelector } from "@/components/reports/shared/FinancialYearSelector";
+import { useFinancialYears } from "@/components/reports/shared/useFinancialYears";
 
 type DocumentKind = "tax_invoice" | "proforma" | "quotation" | "delivery_challan";
 type DocumentTable = "invoices" | "performa" | "quotation" | "challan";
@@ -57,7 +59,21 @@ export function DocumentFolderView({
   folderBasePath,
   createPath,
 }: Props) {
-  const { folders, isLoading } = useInvoiceFolders({ table, kind });
+  const {
+    financialYears,
+    selectedFinancialYear,
+    selectedFinancialYearId,
+    setSelectedFinancialYearId,
+    isLoading: isFinancialYearsLoading,
+  } = useFinancialYears();
+
+  const { folders, isLoading: isDocumentsLoading } = useInvoiceFolders({
+    table,
+    kind,
+    financialYear: selectedFinancialYear,
+  });
+
+  const isLoading = isFinancialYearsLoading || isDocumentsLoading;
   const [q, setQ] = useState("");
   const [view, setView] = useState<"folders" | "all">("folders");
 
@@ -120,15 +136,24 @@ export function DocumentFolderView({
         }
       />
 
-      <div className="relative mb-4 max-w-sm">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          className="h-9 pl-9"
-          placeholder={
-            view === "folders" ? "Search companies…" : "Search documents…"
-          }
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="relative w-full max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            className="h-9 pl-9"
+            placeholder={
+              view === "folders" ? "Search companies…" : "Search documents…"
+            }
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        </div>
+
+        <FinancialYearSelector
+          financialYears={financialYears}
+          selectedFinancialYearId={selectedFinancialYearId}
+          onChange={setSelectedFinancialYearId}
+          disabled={isFinancialYearsLoading}
         />
       </div>
 

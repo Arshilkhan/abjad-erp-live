@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { TaxInvoiceTable } from "@/components/documents/tax-invoice-table";
 import { useInvoiceFolders } from "@/lib/invoice-folders";
 import { formatINR, formatDate } from "@/lib/format";
+import { FinancialYearSelector } from "@/components/reports/shared/FinancialYearSelector";
+import { useFinancialYears } from "@/components/reports/shared/useFinancialYears";
 
 export const Route = createFileRoute("/_authenticated/invoices")({
   head: () => ({ meta: [{ title: "Invoices — ABJAD ERP" }] }),
@@ -21,7 +23,21 @@ function InvoicesLayout() {
 }
 
 function InvoicesIndex() {
-  const { folders, isLoading } = useInvoiceFolders({ table: "invoices", kind: "tax_invoice" });
+  const {
+    financialYears,
+    selectedFinancialYear,
+    selectedFinancialYearId,
+    setSelectedFinancialYearId,
+    isLoading: isFinancialYearsLoading,
+  } = useFinancialYears();
+
+  const { folders, isLoading: isInvoicesLoading } = useInvoiceFolders({
+    table: "invoices",
+    kind: "tax_invoice",
+    financialYear: selectedFinancialYear,
+  });
+
+  const isLoading = isFinancialYearsLoading || isInvoicesLoading;
   const [q, setQ] = useState("");
   const [view, setView] = useState<"folders" | "all">("folders");
 
@@ -60,13 +76,22 @@ function InvoicesIndex() {
         }
       />
 
-      <div className="relative mb-4 max-w-sm">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          className="h-9 pl-9"
-          placeholder={view === "folders" ? "Search companies…" : "Search documents…"}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="relative w-full max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            className="h-9 pl-9"
+            placeholder={view === "folders" ? "Search companies…" : "Search documents…"}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        </div>
+
+        <FinancialYearSelector
+          financialYears={financialYears}
+          selectedFinancialYearId={selectedFinancialYearId}
+          onChange={setSelectedFinancialYearId}
+          disabled={isFinancialYearsLoading}
         />
       </div>
 

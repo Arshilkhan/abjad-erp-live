@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { FinancialYear } from "@/components/reports/shared/useFinancialYears";
+import { filterInvoicesByFinancialYear } from "@/components/reports/shared/financial-year-utils";
 
 export const UNFILED = "Unfiled";
 
@@ -21,7 +23,7 @@ export type InvoiceFolder = {
   lastDate: string | null;
 };
 
-export function useInvoiceFolders(opts?: { table?: "invoices" | "quotation" | "challan" | "performa"; kind?: string }) {
+export function useInvoiceFolders(opts?: { table?: "invoices" | "quotation" | "challan" | "performa"; kind?: string; financialYear?: FinancialYear; }) {
   const table = opts?.table ?? "invoices";
   const invoicesQ = useQuery({
     queryKey: ["sales-documents", table],
@@ -46,7 +48,14 @@ export function useInvoiceFolders(opts?: { table?: "invoices" | "quotation" | "c
   for (const c of customersQ.data ?? []) map.set(c.id, (c.company_name || c.customer_name || "").trim());
 
   const folders = new Map<string, InvoiceFolder>();
-  for (const r of invoicesQ.data ?? []) {
+  const filteredInvoices = opts?.financialYear
+    ? filterInvoicesByFinancialYear(
+      invoicesQ.data ?? [],
+      opts.financialYear,
+    )
+    : invoicesQ.data ?? [];
+
+  for (const r of filteredInvoices) {
     if (opts?.kind && String(r.invoice_type) !== opts.kind) continue;
     const name = (r.customer_id ? map.get(r.customer_id) : "") || (r.customer_name_snapshot ?? "").trim() || UNFILED;
 

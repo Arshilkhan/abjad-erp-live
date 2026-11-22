@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { QuotationTable } from "@/components/documents/quotation-table";
 import { useInvoiceFolders } from "@/lib/invoice-folders";
 import { formatINR } from "@/lib/format";
+import { FinancialYearSelector } from "@/components/reports/shared/FinancialYearSelector";
+import { useFinancialYears } from "@/components/reports/shared/useFinancialYears";
 
 export const Route = createFileRoute("/_authenticated/quotations/folder/$company")({
   head: () => ({ meta: [{ title: "Quotation Company Folder — ABJAD ERP" }] }),
@@ -19,10 +21,21 @@ function QuotationFolderPage() {
     from: "/_authenticated/quotations/folder/$company",
   });
 
-  const { folders, isLoading } = useInvoiceFolders({
+  const {
+    financialYears,
+    selectedFinancialYear,
+    selectedFinancialYearId,
+    setSelectedFinancialYearId,
+    isLoading: isFinancialYearsLoading,
+  } = useFinancialYears();
+
+  const { folders, isLoading: isDocumentsLoading } = useInvoiceFolders({
     table: "quotation",
     kind: "quotation",
+    financialYear: selectedFinancialYear,
   });
+
+  const isLoading = isFinancialYearsLoading || isDocumentsLoading;
 
   const [q, setQ] = useState("");
   const folder = folders.find((f) => f.slug === company);
@@ -67,6 +80,12 @@ function QuotationFolderPage() {
                 onChange={(e) => setQ(e.target.value)}
               />
             </div>
+            <FinancialYearSelector
+              financialYears={financialYears}
+              selectedFinancialYearId={selectedFinancialYearId}
+              onChange={setSelectedFinancialYearId}
+              disabled={isFinancialYearsLoading}
+            />
           </div>
 
           <QuotationTable rows={rows} isLoading={isLoading} />

@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { ProformaTable } from "@/components/documents/proforma-table";
 import { useInvoiceFolders } from "@/lib/invoice-folders";
 import { formatINR } from "@/lib/format";
+import { FinancialYearSelector } from "@/components/reports/shared/FinancialYearSelector";
+import { useFinancialYears } from "@/components/reports/shared/useFinancialYears";
 
 export const Route = createFileRoute("/_authenticated/proformas/folder/$company")({
   head: () => ({ meta: [{ title: "Proforma Company Folder — ABJAD ERP" }] }),
@@ -19,10 +21,21 @@ function ProformaFolderPage() {
     from: "/_authenticated/proformas/folder/$company",
   });
 
-  const { folders, isLoading } = useInvoiceFolders({
+  const {
+    financialYears,
+    selectedFinancialYear,
+    selectedFinancialYearId,
+    setSelectedFinancialYearId,
+    isLoading: isFinancialYearsLoading,
+  } = useFinancialYears();
+
+  const { folders, isLoading: isDocumentsLoading } = useInvoiceFolders({
     table: "performa",
     kind: "proforma",
+    financialYear: selectedFinancialYear,
   });
+
+  const isLoading = isFinancialYearsLoading || isDocumentsLoading;
 
   const [q, setQ] = useState("");
   const folder = folders.find((f) => f.slug === company);
@@ -67,6 +80,12 @@ function ProformaFolderPage() {
                 onChange={(e) => setQ(e.target.value)}
               />
             </div>
+            <FinancialYearSelector
+              financialYears={financialYears}
+              selectedFinancialYearId={selectedFinancialYearId}
+              onChange={setSelectedFinancialYearId}
+              disabled={isFinancialYearsLoading}
+            />
           </div>
 
           <ProformaTable rows={rows} isLoading={isLoading} />

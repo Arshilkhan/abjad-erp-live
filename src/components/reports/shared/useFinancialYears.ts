@@ -12,7 +12,11 @@ export type FinancialYear = {
 
 export function useFinancialYears() {
     const [selectedFinancialYearId, setSelectedFinancialYearId] =
-        useState("");
+        useState(() =>
+            typeof window !== "undefined"
+                ? window.sessionStorage.getItem("abjad-selected-financial-year") ?? ""
+                : ""
+        );
 
     const {
         data: financialYears = [],
@@ -33,7 +37,13 @@ export function useFinancialYears() {
     });
 
     useEffect(() => {
-        if (selectedFinancialYearId || financialYears.length === 0) return;
+        if (financialYears.length === 0) return;
+
+        const selectedExists = financialYears.some(
+            (year) => year.id === selectedFinancialYearId
+        );
+
+        if (selectedExists) return;
 
         const defaultYear =
             financialYears.find((year) => year.is_active) ??
@@ -41,6 +51,15 @@ export function useFinancialYears() {
 
         setSelectedFinancialYearId(defaultYear.id);
     }, [financialYears, selectedFinancialYearId]);
+
+    useEffect(() => {
+        if (selectedFinancialYearId) {
+            sessionStorage.setItem(
+                "abjad-selected-financial-year",
+                selectedFinancialYearId
+            );
+        }
+    }, [selectedFinancialYearId]);
 
     const selectedFinancialYear = financialYears.find(
         (year) => year.id === selectedFinancialYearId,
