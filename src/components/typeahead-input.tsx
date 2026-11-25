@@ -1,4 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { Input } from "@/components/ui/input";
 
@@ -8,12 +15,13 @@ export interface TypeaheadOption {
   sublabel?: string;
 }
 
-/**
- * Text input with suggestions. Free-form typing allowed.
- * Calls onSelect when a suggestion is picked, onChange for raw text.
- * If user leaves the field with text that doesn't match any option,
- * onMissing(text) is invoked (used to prompt "add new").
- */
+type DropdownPosition = {
+  top: number;
+  left: number;
+  width: number;
+  maxHeight: number;
+};
+
 export function TypeaheadInput({
   value,
   onChange,
@@ -37,62 +45,124 @@ export function TypeaheadInput({
 }) {
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [position, setPosition] = useState<DropdownPosition | null>(null);
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
 
-  const filtered = useMemo(() => {
-    const q = value.trim().toLowerCase();
-    if (!q) return options.slice(0, 8);
-    return options
-      .filter((o) =>
-        o.label.toLowerCase().includes(q) ||
-        (o.sublabel ?? "").toLowerCase().includes(q),
-      )
-      .slice(0, 8);
-  }, [value, options]);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const onDoc = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    setMounted(true);
   }, []);
 
-  // Track the input position so the dropdown can render in a portal,
-  // escaping any parent with overflow hidden/auto (e.g. the line-items table).
+  const filtered = useMemo(() => {
+    const query = value.trim().toLowerCase();
+
+    if (!query) return options;
+
+    return options.filter(
+      (option) =>
+        option.label.toLowerCase().includes(query) ||
+        (option.sublabel ?? "").toLowerCase().includes(query),
+    );
+  }, [value, options]);
+
+  const updatePosition = () => {
+    const element = wrapRef.current;
+    if (!element) return;
+
+    const rect = element.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const gap = 5;
+    const edgePadding = 12;
+
+    const spaceBelow = viewportHeight - rect.bottom - gap - edgePadding;
+    const spaceAbove = rect.top - gap - edgePadding;
+
+    const openAbove = spaceBelow < 180 && spaceAbove > spaceBelow;
+    const availableSpace = Math.max(
+      100,
+      openAbove ? spaceAbove : spaceBelow,
+    );
+
+    const maxHeight = Math.min(320, availableSpace);
+
+    setPosition({
+      top: openAbove
+        ? rect.top - gap - maxHeight
+        : rect.bottom + gap,
+      left: rect.left,
+      width: Math.max(rect.width, 220),
+      maxHeight,
+    });
+  };
+
   useLayoutEffect(() => {
     if (!open) return;
-    const update = () => {
-      const el = wrapRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      setRect({ top: r.bottom + 4, left: r.left, width: r.width });
+
+    updatePosition();
+
+    const handleScroll = (event: Event) => {
+      // Scrolling inside the suggestion list must not reposition it.
+      if (
+        dropdownRef.current &&
+        dropdownRef.current.contains(event.target as Node)
+      ) {
+        return;
+      }
+
+      updatePosition();
     };
-    update();
-    window.addEventListener("scroll", update, true);
-    window.addEventListener("resize", update);
+
+    window.addEventListener("scroll", handleScroll, true);
+    window.addEventListener("resize", updatePosition);
+
     return () => {
-      window.removeEventListener("scroll", update, true);
-      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", updatePosition);
     };
   }, [open, filtered.length]);
 
-  const pick = (opt: TypeaheadOption) => {
-    onSelect(opt);
-    onChange(opt.label);
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+
+      if (
+        wrapRef.current?.contains(target) ||
+        dropdownRef.current?.contains(target)
+      ) {
+        return;
+      }
+
+      setOpen(false);
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, []);
+
+  const pick = (option: TypeaheadOption) => {
+    onChange(option.label);
+    onSelect(option);
     setOpen(false);
   };
 
   const handleBlur = () => {
-    // small delay so click on suggestion registers first
-    setTimeout(() => {
-      const t = value.trim();
-      if (!t) return;
-      const match = options.find((o) => o.label.toLowerCase() === t.toLowerCase());
-      if (!match && onMissing) onMissing(t);
+    window.setTimeout(() => {
+      const text = value.trim();
+
+      if (!text) return;
+
+      const match = options.find(
+        (option) => option.label.toLowerCase() === text.toLowerCase(),
+      );
+
+      if (!match && onMissing) {
+        onMissing(text);
+      }
     }, 150);
   };
 
@@ -103,36 +173,88 @@ export function TypeaheadInput({
         disabled={disabled}
         placeholder={placeholder}
         className={inputClassName}
-        onChange={(e) => { onChange(e.target.value); setOpen(true); setHighlight(0); }}
-        onFocus={() => setOpen(true)}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setOpen(true);
+          setHighlight(0);
+        }}
+        onFocus={() => {
+          setOpen(true);
+          setHighlight(0);
+        }}
         onBlur={handleBlur}
-        onKeyDown={(e) => {
+        onKeyDown={(event) => {
           if (!open) return;
-          if (e.key === "ArrowDown") { e.preventDefault(); setHighlight((h) => Math.min(h + 1, filtered.length - 1)); }
-          else if (e.key === "ArrowUp") { e.preventDefault(); setHighlight((h) => Math.max(h - 1, 0)); }
-          else if (e.key === "Enter" && filtered[highlight]) { e.preventDefault(); pick(filtered[highlight]); }
-          else if (e.key === "Escape") setOpen(false);
+
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            setHighlight((current) =>
+              Math.min(current + 1, filtered.length - 1),
+            );
+          } else if (event.key === "ArrowUp") {
+            event.preventDefault();
+            setHighlight((current) => Math.max(current - 1, 0));
+          } else if (event.key === "Enter" && filtered[highlight]) {
+            event.preventDefault();
+            pick(filtered[highlight]);
+          } else if (event.key === "Escape") {
+            setOpen(false);
+          }
         }}
       />
-      {mounted && open && filtered.length > 0 && rect && createPortal(
-        <ul
-          style={{ position: "fixed", top: rect.top, left: rect.left, width: Math.max(rect.width, 220) }}
-          className="z-[100] max-h-64 overflow-auto rounded-md border bg-popover text-popover-foreground shadow-md"
-        >
-          {filtered.map((o, i) => (
-            <li
-              key={o.id}
-              onMouseDown={(e) => { e.preventDefault(); pick(o); }}
-              onMouseEnter={() => setHighlight(i)}
-              className={`cursor-pointer px-3 py-1.5 text-sm ${i === highlight ? "bg-accent text-accent-foreground" : ""}`}
-            >
-              <div className="font-medium">{o.label}</div>
-              {o.sublabel && <div className="text-xs text-muted-foreground">{o.sublabel}</div>}
-            </li>
-          ))}
-        </ul>,
-        document.body,
-      )}
+
+      {mounted &&
+        open &&
+        filtered.length > 0 &&
+        position &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            role="listbox"
+            onWheel={(event) => event.stopPropagation()}
+            onTouchMove={(event) => event.stopPropagation()}
+            style={{
+              position: "fixed",
+              top: position.top,
+              left: position.left,
+              width: position.width,
+              maxHeight: position.maxHeight,
+              overflowY: "auto",
+              overflowX: "hidden",
+              overscrollBehavior: "contain",
+              WebkitOverflowScrolling: "touch",
+              zIndex: 9999,
+              pointerEvents: "auto",
+            }}
+            className="rounded-md border bg-popover text-popover-foreground shadow-lg"
+          >
+            {filtered.map((option, index) => (
+              <div
+                key={option.id}
+                role="option"
+                aria-selected={index === highlight}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  pick(option);
+                }}
+                onMouseEnter={() => setHighlight(index)}
+                className={`cursor-pointer px-3 py-2 text-sm ${
+                  index === highlight
+                    ? "bg-accent text-accent-foreground"
+                    : "hover:bg-muted"
+                }`}
+              >
+                <div className="font-medium">{option.label}</div>
+                {option.sublabel && (
+                  <div className="text-xs text-muted-foreground">
+                    {option.sublabel}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

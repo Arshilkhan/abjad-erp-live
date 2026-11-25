@@ -1,6 +1,5 @@
-
 import { sortByInvoiceNumber } from "./shared/invoice-sort";
-import { useMemo, useState } from "react";
+import { memo, useCallback, useDeferredValue, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { formatINR, formatDate, billNo } from "@/lib/format";
@@ -20,7 +19,7 @@ import { Download, ArrowLeft, Search } from "lucide-react";
 
 import { ReportCard } from "./shared/ReportCard";
 import { ReportTable } from "./shared/ReportTable";
-import { downloadCSV, today } from "./shared/report-utils";
+import { today } from "./shared/report-utils";
 
 import { FinancialYearSelector } from "./shared/FinancialYearSelector";
 import { useFinancialYears } from "./shared/useFinancialYears";
@@ -31,8 +30,10 @@ import {
 } from "./shared/financial-year-utils";
 
 import {
-    downloadCustomerLedgerCSV,
-    downloadCompanyLedgerCSV,
+    downloadCustomerLedgerXLSX,
+    downloadCompanyLedgerXLSX,
+    downloadCustomerLedgerSummaryXLSX,
+    type LedgerCompanyProfile,
 } from "./shared/customer-ledger-export";
 
 type Customer = {
@@ -56,6 +57,20 @@ type Invoice = {
     status: string | null;
 };
 
+type Payment = {
+    id: string;
+    customer_id: string | null;
+    payment_date: string;
+    amount: number | null;
+    status: string;
+};
+
+type CustomerOpeningBalance = {
+    customer_id: string;
+    financial_year: string;
+    opening_balance: number;
+};
+
 type CustomerSummary = Customer & {
     customer: string;
     billed: number;
@@ -63,6 +78,143 @@ type CustomerSummary = Customer & {
     outstanding: number;
     invoiceCount: number;
 };
+const EMPTY_INVOICES: Invoice[] = [];
+const EMPTY_PAYMENTS: Payment[] = [];
+const EMPTY_OPENING_BALANCES: CustomerOpeningBalance[] = [];
+const COMPANY_PROFILE_STALE_MS = 10 * 60 * 1000;
+
+const INVOICE_TABLE_HEADER = (
+    <TableHeader>
+        <TableRow>
+            <TableHead>Invoice</TableHead>
+            <TableHead>Date</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="text-right">Billed</TableHead>
+            <TableHead className="text-right">Paid</TableHead>
+            <TableHead className="text-right">Outstanding</TableHead>
+        </TableRow>
+    </TableHeader>
+);
+
+const CUSTOMER_TABLE_HEADER = (
+    <TableHeader>
+        <TableRow>
+            <TableHead>Customer</TableHead>
+            <TableHead>Mobile</TableHead>
+            <TableHead className="text-right">Invoices</TableHead>
+            <TableHead className="text-right">Billed</TableHead>
+            <TableHead className="text-right">Paid</TableHead>
+            <TableHead className="text-right">Outstanding</TableHead>
+        </TableRow>
+    </TableHeader>
+);
+
+const customerDisplayName = (customer: Customer) =>
+    customer.company_name?.trim() ||
+    customer.customer_name?.trim() ||
+    "Unnamed customer";
+
+function TotalTile({
+    label,
+    value,
+    valueClassName = "",
+}: {
+    label: string;
+    value: number;
+    valueClassName?: string;
+}) {
+    return (
+        <div className="rounded-lg border p-3">
+            <p className="text-xs text-muted-foreground">{label}</p>
+
+            <p className={`text-lg font-semibold tabular-nums ${valueClassName}`}>
+                {formatINR(value)}
+            </p>
+        </div>
+    );
+}
+
+const InvoiceRow = memo(function InvoiceRow({ invoice }: { invoice: Invoice }) {
+    const billed = Number(invoice.grand_total ?? 0);
+    const paid = Number(invoice.amount_paid ?? 0);
+
+    return (
+        <TableRow>
+            <TableCell className="font-mono text-xs">
+                {billNo(invoice.invoice_number)}
+            </TableCell>
+
+            <TableCell>
+                {invoice.invoice_date ? formatDate(invoice.invoice_date) : "—"}
+            </TableCell>
+
+            <TableCell className="text-xs uppercase">
+                {invoice.status ?? "—"}
+            </TableCell>
+
+            <TableCell className="text-right tabular-nums">
+                {formatINR(billed)}
+            </TableCell>
+
+            <TableCell className="text-right tabular-nums">
+                {formatINR(paid)}
+            </TableCell>
+
+            <TableCell className="text-right tabular-nums font-semibold">
+                {formatINR(billed - paid)}
+            </TableCell>
+        </TableRow>
+    );
+});
+
+const CustomerRow = memo(function CustomerRow({
+    customer,
+    onSelect,
+}: {
+    customer: CustomerSummary;
+    onSelect: (id: string) => void;
+}) {
+    return (
+        <TableRow
+            className="cursor-pointer hover:bg-muted/50"
+            onClick={() => onSelect(customer.id)}
+        >
+            <TableCell>
+                <div className="font-medium">{customer.customer}</div>
+
+                {customer.company_name &&
+                    customer.customer_name &&
+                    customer.company_name !== customer.customer_name && (
+                        <div className="text-xs text-muted-foreground">
+                            {customer.customer_name}
+                        </div>
+                    )}
+            </TableCell>
+
+            <TableCell>{customer.mobile ?? "—"}</TableCell>
+
+            <TableCell className="text-right tabular-nums">
+                {customer.invoiceCount}
+            </TableCell>
+
+            <TableCell className="text-right tabular-nums">
+                {formatINR(customer.billed)}
+            </TableCell>
+
+            <TableCell className="text-right tabular-nums">
+                {formatINR(customer.paid)}
+            </TableCell>
+
+            <TableCell
+                className={`text-right tabular-nums font-semibold ${
+                    customer.outstanding > 0 ? "text-warning" : ""
+                }`}
+            >
+                {formatINR(customer.outstanding)}
+            </TableCell>
+        </TableRow>
+    );
+});
 
 export function CustomerLedger() {
     const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
@@ -70,6 +222,7 @@ export function CustomerLedger() {
     );
 
     const [search, setSearch] = useState("");
+    const deferredSearch = useDeferredValue(search);
 
     const {
         financialYears,
@@ -79,6 +232,25 @@ export function CustomerLedger() {
         isLoading: financialYearsLoading,
         error: financialYearsError,
     } = useFinancialYears();
+    const {
+        data: companyProfile,
+        isLoading: companyProfileLoading,
+        error: companyProfileError,
+    } = useQuery({
+        queryKey: ["rep-ledger-company-profile"],
+        staleTime: COMPANY_PROFILE_STALE_MS,
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from("company_profile")
+                .select("name, address, city, state, pincode, email, gst_number")
+                .limit(1)
+                .maybeSingle();
+
+            if (error) throw error;
+
+            return data as LedgerCompanyProfile | null;
+        },
+    });
 
     const {
         data: customers = [],
@@ -89,9 +261,7 @@ export function CustomerLedger() {
         queryFn: async () => {
             const { data, error } = await supabase
                 .from("customers")
-                .select(
-                    "id, customer_name, company_name, billing_address, mobile, email",
-                )
+                .select("id, customer_name, company_name, billing_address, mobile, email")
                 .order("customer_name");
 
             if (error) throw error;
@@ -101,7 +271,7 @@ export function CustomerLedger() {
     });
 
     const {
-        data: invoices = [],
+        data: invoices = EMPTY_INVOICES,
         isLoading: invoicesLoading,
         error: invoicesError,
     } = useQuery({
@@ -130,88 +300,129 @@ export function CustomerLedger() {
         },
     });
 
-    const summary = useMemo<CustomerSummary[]>(() => {
-        const invoiceMap = new Map<
-            string,
-            {
-                billed: number;
-                paid: number;
-                invoiceCount: number;
+    const {
+        data: payments = EMPTY_PAYMENTS,
+        isLoading: paymentsLoading,
+        error: paymentsError,
+    } = useQuery({
+        queryKey: ["rep-ledger-payments"],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from("payments")
+                .select("id, customer_id, payment_date, amount, status")
+                .eq("status", "received")
+                .order("payment_date", { ascending: true });
+
+            if (error) throw error;
+
+            return (data ?? []) as Payment[];
+        },
+    });
+    const {
+        data: openingBalances = EMPTY_OPENING_BALANCES,
+        isLoading: openingBalancesLoading,
+        error: openingBalancesError,
+    } = useQuery({
+        queryKey: ["rep-ledger-opening-balances", selectedFinancialYear?.year_label],
+        enabled: Boolean(selectedFinancialYear?.year_label),
+        queryFn: async () => {
+            if (!selectedFinancialYear?.year_label) {
+                return EMPTY_OPENING_BALANCES;
             }
-        >();
+
+            const { data, error } = await supabase
+                .from("customer_opening_balances")
+                .select("customer_id, financial_year, opening_balance")
+                .eq("financial_year", selectedFinancialYear.year_label);
+
+            if (error) throw error;
+
+            return (data ?? []) as CustomerOpeningBalance[];
+        },
+    });
+
+    const invoicesByCustomer = useMemo(() => {
+        const groups = new Map<string, Invoice[]>();
 
         for (const invoice of invoices) {
             if (!invoice.customer_id) continue;
 
-            const current = invoiceMap.get(invoice.customer_id) ?? {
-                billed: 0,
-                paid: 0,
-                invoiceCount: 0,
-            };
-
-            current.billed += Number(invoice.grand_total ?? 0);
-            current.paid += Number(invoice.amount_paid ?? 0);
-            current.invoiceCount += 1;
-
-            invoiceMap.set(invoice.customer_id, current);
+            const group = groups.get(invoice.customer_id);
+            if (group) group.push(invoice);
+            else groups.set(invoice.customer_id, [invoice]);
         }
 
+        return groups;
+    }, [invoices]);
+    const summary = useMemo<CustomerSummary[]>(() => {
         return customers
             .map((customer) => {
-                const totals = invoiceMap.get(customer.id) ?? {
-                    billed: 0,
-                    paid: 0,
-                    invoiceCount: 0,
-                };
+                let billed = 0;
+                let paid = 0;
+                const group = invoicesByCustomer.get(customer.id);
+
+                if (group) {
+                    for (const invoice of group) {
+                        billed += Number(invoice.grand_total ?? 0);
+                        paid += Number(invoice.amount_paid ?? 0);
+                    }
+                }
 
                 return {
                     ...customer,
-                    customer:
-                        customer.company_name?.trim() ||
-                        customer.customer_name?.trim() ||
-                        "Unnamed customer",
-                    ...totals,
-                    outstanding: totals.billed - totals.paid,
+                    customer: customerDisplayName(customer),
+                    billed,
+                    paid,
+                    invoiceCount: group?.length ?? 0,
+                    outstanding: billed - paid,
                 };
             })
             .sort((a, b) => b.outstanding - a.outstanding);
-    }, [customers, invoices]);
-
+    }, [customers, invoicesByCustomer]);
+    const searchIndex = useMemo(
+        () =>
+            summary.map((customer) =>
+                [
+                    customer.customer,
+                    customer.customer_name,
+                    customer.company_name,
+                    customer.mobile,
+                    customer.email,
+                ]
+                    .filter(Boolean)
+                    .join("\n")
+                    .toLowerCase(),
+            ),
+        [summary],
+    );
     const filteredCustomers = useMemo(() => {
-        const term = search.trim().toLowerCase();
+        const term = deferredSearch.trim().toLowerCase();
 
         if (!term) return summary;
 
-        return summary.filter((customer) =>
-            [
-                customer.customer,
-                customer.customer_name,
-                customer.company_name,
-                customer.mobile,
-                customer.email,
-            ]
-                .filter(Boolean)
-                .some((value) => value!.toLowerCase().includes(term)),
-        );
-    }, [summary, search]);
+        return summary.filter((_, index) => searchIndex[index].includes(term));
+    }, [summary, searchIndex, deferredSearch]);
 
-    const selectedCustomer = summary.find(
-        (customer) => customer.id === selectedCustomerId,
+    const selectedCustomer = useMemo(
+        () => summary.find((customer) => customer.id === selectedCustomerId),
+        [summary, selectedCustomerId],
     );
-
     const customerInvoices = useMemo(
         () =>
-            sortByInvoiceNumber(
-                invoices.filter(
-                    (invoice) => invoice.customer_id === selectedCustomerId,
-                ),
-            ),
-        [invoices, selectedCustomerId],
+            selectedCustomerId
+                ? sortByInvoiceNumber([
+                      ...(invoicesByCustomer.get(selectedCustomerId) ?? []),
+                  ])
+                : EMPTY_INVOICES,
+        [invoicesByCustomer, selectedCustomerId],
     );
-
-    const financialYearEnd = selectedFinancialYear
-        ? getFinancialYearEndDate(selectedFinancialYear)
-        : "";
+    const financialYearEnd = useMemo(
+        () =>
+            selectedFinancialYear
+                ? getFinancialYearEndDate(selectedFinancialYear)
+                : "",
+        [selectedFinancialYear],
+    );
 
     const financialYearInvoices = useMemo(
         () =>
@@ -222,28 +433,104 @@ export function CustomerLedger() {
             ),
         [invoices, selectedFinancialYear, financialYearEnd],
     );
-
     const customerFinancialYearInvoices = useMemo(
         () =>
-            financialYearInvoices.filter(
-                (invoice) => invoice.customer_id === selectedCustomerId,
-            ),
+            selectedCustomerId
+                ? financialYearInvoices.filter(
+                      (invoice) => invoice.customer_id === selectedCustomerId,
+                  )
+                : EMPTY_INVOICES,
         [financialYearInvoices, selectedCustomerId],
     );
-
-    const exportCustomers = useMemo(
+    const selectedCustomerOpeningBalance = useMemo(
         () =>
-            customers.map((customer) => ({
-                ...customer,
-                customer:
-                    customer.company_name?.trim() ||
-                    customer.customer_name?.trim() ||
-                    "Unnamed customer",
-            })),
-        [customers],
+            openingBalances.find(
+                (balance) => balance.customer_id === selectedCustomerId,
+            ) ?? null,
+        [openingBalances, selectedCustomerId],
     );
 
-    if (customersError || invoicesError || financialYearsError) {
+    const customerFinancialYearPayments = useMemo(() => {
+        if (!selectedCustomerId) return EMPTY_PAYMENTS;
+
+        const start = selectedFinancialYear?.start_date ?? "";
+
+        return payments.filter(
+            (payment) =>
+                payment.customer_id === selectedCustomerId &&
+                payment.status === "received" &&
+                payment.payment_date >= start &&
+                payment.payment_date <= financialYearEnd,
+        );
+    }, [payments, selectedCustomerId, selectedFinancialYear, financialYearEnd]);
+
+    const isExportLoading =
+        companyProfileLoading ||
+        customersLoading ||
+        invoicesLoading ||
+        paymentsLoading ||
+        openingBalancesLoading;
+
+    const canExport = Boolean(companyProfile);
+    const exportCustomerLedger = useCallback(() => {
+        if (!selectedFinancialYear || !companyProfile || !selectedCustomer) {
+            return;
+        }
+
+        void downloadCustomerLedgerXLSX(
+            companyProfile,
+            selectedCustomer,
+            customerFinancialYearInvoices,
+            customerFinancialYearPayments,
+            Number(selectedCustomerOpeningBalance?.opening_balance ?? 0),
+            selectedFinancialYear,
+            financialYearEnd,
+            today(),
+        );
+    }, [
+        selectedFinancialYear,
+        companyProfile,
+        selectedCustomer,
+        customerFinancialYearInvoices,
+        customerFinancialYearPayments,
+        selectedCustomerOpeningBalance,
+        financialYearEnd,
+    ]);
+
+    const exportSummary = useCallback(() => {
+        void downloadCustomerLedgerSummaryXLSX(summary, today());
+    }, [summary]);
+
+    const exportCompanyLedger = useCallback(() => {
+        if (!selectedFinancialYear || !companyProfile) return;
+
+        void downloadCompanyLedgerXLSX(
+            companyProfile,
+            summary,
+            financialYearInvoices,
+            openingBalances,
+            selectedFinancialYear,
+            financialYearEnd,
+            today(),
+        );
+    }, [
+        selectedFinancialYear,
+        companyProfile,
+        summary,
+        financialYearInvoices,
+        openingBalances,
+        financialYearEnd,
+    ]);
+
+    const clearSelection = useCallback(() => setSelectedCustomerId(null), []);
+    if (
+        customersError ||
+        invoicesError ||
+        paymentsError ||
+        openingBalancesError ||
+        financialYearsError ||
+        companyProfileError
+    ) {
         return (
             <ReportCard title="Customer Ledger">
                 <p className="py-6 text-center text-sm text-destructive">
@@ -252,7 +539,6 @@ export function CustomerLedger() {
             </ReportCard>
         );
     }
-
     if (selectedCustomerId && selectedCustomer) {
         return (
             <ReportCard
@@ -261,7 +547,7 @@ export function CustomerLedger() {
                         <Button
                             size="icon"
                             variant="ghost"
-                            onClick={() => setSelectedCustomerId(null)}
+                            onClick={clearSelection}
                             aria-label="Back to customers"
                             className="shrink-0"
                         >
@@ -291,7 +577,8 @@ export function CustomerLedger() {
                         </p>
 
                         <p className="text-xs text-muted-foreground">
-                            Export invoices for the selected financial year.
+                            Export opening balance, invoices and payments for
+                            the selected financial year.
                         </p>
                     </div>
 
@@ -305,24 +592,18 @@ export function CustomerLedger() {
 
                         <Button
                             size="sm"
-                            onClick={() => {
-                                if (!selectedFinancialYear) return;
-
-                                downloadCustomerLedgerCSV(
-                                    selectedCustomer,
-                                    customerFinancialYearInvoices,
-                                    selectedFinancialYear,
-                                    financialYearEnd,
-                                    today(),
-                                );
-                            }}
+                            onClick={exportCustomerLedger}
                             disabled={
+                                isExportLoading ||
+                                !canExport ||
                                 !selectedFinancialYear ||
-                                customerFinancialYearInvoices.length === 0
+                                (customerFinancialYearInvoices.length === 0 &&
+                                    customerFinancialYearPayments.length === 0 &&
+                                    !selectedCustomerOpeningBalance)
                             }
                         >
                             <Download className="mr-2 h-4 w-4" />
-                            Export CSV
+                            Export XLSX
                         </Button>
                     </div>
                 </div>
@@ -330,35 +611,13 @@ export function CustomerLedger() {
                 {/* Lifetime totals */}
 
                 <div className="mx-3 mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <div className="rounded-lg border p-3">
-                        <p className="text-xs text-muted-foreground">
-                            Total Billed
-                        </p>
-
-                        <p className="text-lg font-semibold tabular-nums">
-                            {formatINR(selectedCustomer.billed)}
-                        </p>
-                    </div>
-
-                    <div className="rounded-lg border p-3">
-                        <p className="text-xs text-muted-foreground">
-                            Total Paid
-                        </p>
-
-                        <p className="text-lg font-semibold tabular-nums">
-                            {formatINR(selectedCustomer.paid)}
-                        </p>
-                    </div>
-
-                    <div className="rounded-lg border p-3">
-                        <p className="text-xs text-muted-foreground">
-                            Outstanding
-                        </p>
-
-                        <p className="text-lg font-semibold tabular-nums text-warning">
-                            {formatINR(selectedCustomer.outstanding)}
-                        </p>
-                    </div>
+                    <TotalTile label="Total Billed" value={selectedCustomer.billed} />
+                    <TotalTile label="Total Paid" value={selectedCustomer.paid} />
+                    <TotalTile
+                        label="Outstanding"
+                        value={selectedCustomer.outstanding}
+                        valueClassName="text-warning"
+                    />
                 </div>
 
                 {/* Lifetime invoice history */}
@@ -366,22 +625,7 @@ export function CustomerLedger() {
                 <div className="mx-3">
                     <ReportTable>
                         <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Invoice</TableHead>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead className="text-right">
-                                        Billed
-                                    </TableHead>
-                                    <TableHead className="text-right">
-                                        Paid
-                                    </TableHead>
-                                    <TableHead className="text-right">
-                                        Outstanding
-                                    </TableHead>
-                                </TableRow>
-                            </TableHeader>
+                            {INVOICE_TABLE_HEADER}
 
                             <TableBody>
                                 {customerInvoices.length === 0 && (
@@ -390,45 +634,15 @@ export function CustomerLedger() {
                                             colSpan={6}
                                             className="py-6 text-center text-muted-foreground"
                                         >
-                                            No tax invoices found for this customer.
+                                            No tax invoices found for this
+                                            customer.
                                         </TableCell>
                                     </TableRow>
                                 )}
 
-                                {customerInvoices.map((invoice) => {
-                                    const billed = Number(invoice.grand_total ?? 0);
-                                    const paid = Number(invoice.amount_paid ?? 0);
-
-                                    return (
-                                        <TableRow key={invoice.id}>
-                                            <TableCell className="font-mono text-xs">
-                                                {billNo(invoice.invoice_number)}
-                                            </TableCell>
-
-                                            <TableCell>
-                                                {invoice.invoice_date
-                                                    ? formatDate(invoice.invoice_date)
-                                                    : "—"}
-                                            </TableCell>
-
-                                            <TableCell className="text-xs uppercase">
-                                                {invoice.status ?? "—"}
-                                            </TableCell>
-
-                                            <TableCell className="text-right tabular-nums">
-                                                {formatINR(billed)}
-                                            </TableCell>
-
-                                            <TableCell className="text-right tabular-nums">
-                                                {formatINR(paid)}
-                                            </TableCell>
-
-                                            <TableCell className="text-right tabular-nums font-semibold">
-                                                {formatINR(billed - paid)}
-                                            </TableCell>
-                                        </TableRow>
-                                    );
-                                })}
+                                {customerInvoices.map((invoice) => (
+                                    <InvoiceRow key={invoice.id} invoice={invoice} />
+                                ))}
                             </TableBody>
                         </Table>
                     </ReportTable>
@@ -436,7 +650,6 @@ export function CustomerLedger() {
             </ReportCard>
         );
     }
-
     return (
         <ReportCard
             title="Customer Ledger"
@@ -445,45 +658,26 @@ export function CustomerLedger() {
                     <Button
                         size="sm"
                         variant="outline"
-                        onClick={() =>
-                            downloadCSV(
-                                `customer_ledger_summary_${today()}.csv`,
-                                summary.map((customer) => ({
-                                    Customer: customer.customer,
-                                    Mobile: customer.mobile ?? "",
-                                    "Invoice Count": customer.invoiceCount,
-                                    "Total Billed": customer.billed,
-                                    "Total Paid": customer.paid,
-                                    Outstanding: customer.outstanding,
-                                })),
-                            )
-                        }
-                        disabled={summary.length === 0}
+                        onClick={exportSummary}
+                        disabled={isExportLoading || summary.length === 0}
                     >
                         <Download className="mr-2 h-4 w-4" />
-                        Summary CSV
+                        Summary XLSX
                     </Button>
 
                     <Button
                         size="sm"
-                        onClick={() => {
-                            if (!selectedFinancialYear) return;
-
-                            downloadCompanyLedgerCSV(
-                                exportCustomers,
-                                financialYearInvoices,
-                                selectedFinancialYear,
-                                financialYearEnd,
-                                today(),
-                            );
-                        }}
+                        onClick={exportCompanyLedger}
                         disabled={
+                            isExportLoading ||
+                            !canExport ||
                             !selectedFinancialYear ||
-                            financialYearInvoices.length === 0
+                            financialYearInvoices.length === 0 &&
+                            openingBalances.length === 0
                         }
                     >
                         <Download className="mr-2 h-4 w-4" />
-                        FY Ledger CSV
+                        FY Ledger XLSX
                     </Button>
                 </div>
             }
@@ -492,13 +686,11 @@ export function CustomerLedger() {
 
             <div className="mx-3 mt-3 mb-4 flex flex-col gap-3 rounded-lg border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-1">
-                    <p className="text-sm font-medium">
-                        Financial-year export
-                    </p>
+                    <p className="text-sm font-medium">Financial-year export</p>
 
                     <p className="text-xs text-muted-foreground">
-                        Select a financial year to export all customer invoices.
-                        Lifetime totals remain unchanged.
+                        Select a financial year to export customer opening
+                        balances and invoices. Lifetime totals remain unchanged.
                     </p>
                 </div>
 
@@ -528,24 +720,7 @@ export function CustomerLedger() {
             <div className="mx-3">
                 <ReportTable>
                     <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Customer</TableHead>
-                                <TableHead>Mobile</TableHead>
-                                <TableHead className="text-right">
-                                    Invoices
-                                </TableHead>
-                                <TableHead className="text-right">
-                                    Billed
-                                </TableHead>
-                                <TableHead className="text-right">
-                                    Paid
-                                </TableHead>
-                                <TableHead className="text-right">
-                                    Outstanding
-                                </TableHead>
-                            </TableRow>
-                        </TableHeader>
+                        {CUSTOMER_TABLE_HEADER}
 
                         <TableBody>
                             {customersLoading || invoicesLoading ? (
@@ -570,53 +745,11 @@ export function CustomerLedger() {
                                 </TableRow>
                             ) : (
                                 filteredCustomers.map((customer) => (
-                                    <TableRow
+                                    <CustomerRow
                                         key={customer.id}
-                                        className="cursor-pointer hover:bg-muted/50"
-                                        onClick={() =>
-                                            setSelectedCustomerId(customer.id)
-                                        }
-                                    >
-                                        <TableCell>
-                                            <div className="font-medium">
-                                                {customer.customer}
-                                            </div>
-
-                                            {customer.company_name &&
-                                                customer.customer_name &&
-                                                customer.company_name !==
-                                                customer.customer_name && (
-                                                    <div className="text-xs text-muted-foreground">
-                                                        {customer.customer_name}
-                                                    </div>
-                                                )}
-                                        </TableCell>
-
-                                        <TableCell>
-                                            {customer.mobile ?? "—"}
-                                        </TableCell>
-
-                                        <TableCell className="text-right tabular-nums">
-                                            {customer.invoiceCount}
-                                        </TableCell>
-
-                                        <TableCell className="text-right tabular-nums">
-                                            {formatINR(customer.billed)}
-                                        </TableCell>
-
-                                        <TableCell className="text-right tabular-nums">
-                                            {formatINR(customer.paid)}
-                                        </TableCell>
-
-                                        <TableCell
-                                            className={`text-right tabular-nums font-semibold ${customer.outstanding > 0
-                                                ? "text-warning"
-                                                : ""
-                                                }`}
-                                        >
-                                            {formatINR(customer.outstanding)}
-                                        </TableCell>
-                                    </TableRow>
+                                        customer={customer}
+                                        onSelect={setSelectedCustomerId}
+                                    />
                                 ))
                             )}
                         </TableBody>

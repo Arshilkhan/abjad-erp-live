@@ -110,8 +110,10 @@ export type ExtractedInvoice = {
 
 const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite"];
-const OPENAI_RESPONSES_ENDPOINT = "https://api.openai.com/v1/responses";
-const OPENAI_FALLBACK_MODEL = "gpt-6.1-sol";
+const GROQ_RESPONSES_ENDPOINT = "https://api.groq.com/openai/v1/responses";
+const OPENROUTER_RESPONSES_ENDPOINT = "https://openrouter.ai/api/v1/responses";
+const DEFAULT_GROQ_MODEL = "qwen/qwen3.8-27b";
+const DEFAULT_OPENROUTER_MODEL = "openrouter/free";
 const RETRY_DELAY_MS = 700;
 const NO_RETRY_STATUSES = new Set([400, 401, 402, 403, 429]);
 const PERMANENT_STATUSES = new Set([400, 401, 402, 403]);
@@ -348,38 +350,17 @@ async function extractWithGemini(body: string, apiKey: string, model: string): P
   return parseContent(content);
 }
 
-function openAiApiError(status: number, body: string): ProviderError {
-  let detail = body;
 
-  try {
-    const parsed = JSON.parse(body);
-    detail = parsed?.error?.message ?? parsed?.message ?? body;
-  } catch {
-    // Keep the raw response body when it is not JSON.
-  }
-
-  let message: string;
-  if (status === 429) {
-    message = "OpenAI API is rate limited. Check your API usage limits and billing.";
-  } else if (status === 401 || status === 403) {
-    message = "OpenAI rejected the API key or the key does not have permission to use the model.";
-  } else if (status === 402) {
-    message = "OpenAI API billing or usage credits are unavailable.";
-  } else {
-    message = `OpenAI extraction failed: ${detail?.slice(0, 300) || status}`;
-  }
-
-  return new ProviderError(message, status);
-}
-
-function getOpenAiOutputText(response: any): string {
+function getResponsesOutputText(response: any): string {
   if (typeof response?.output_text === "string" && response.output_text.trim()) {
     return response.output_text;
   }
 
   const chunks: string[] = [];
+
   for (const item of response?.output ?? []) {
     if (item?.type !== "message" || !Array.isArray(item?.content)) continue;
+
     for (const content of item.content) {
       if (content?.type === "output_text" && typeof content.text === "string") {
         chunks.push(content.text);
@@ -390,13 +371,55 @@ function getOpenAiOutputText(response: any): string {
   return chunks.join("\n");
 }
 
-async function extractWithOpenAI(
+async function extractWithGroq(
+  wordText: string,
+  apiKey: string,
+  model: string,
+): Promise<ExtractedInvoice> {
+  const response = await fetch(GROQ_RESPONSES_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      input: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: `${PROMPT}\n\nExtract invoice information from the following Word document content. Preserve table row order and associations between challan numbers and dates:\n\n${wordText}`,
+            },
+          ],
+        },
+      ],
+      temperature: 0,
+    }),
+  });
+
+  if (!response.ok) {
+    throw apiError(response.status, await response.text());
+  }
+
+  const json: any = await response.json();
+  const output = getResponsesOutputText(json);
+
+  if (!output.trim()) {
+    throw new Error("Groq returned an empty extraction response.");
+  }
+
+  return parseContent(output);
+}
+
+async function extractWithOpenRouter(
   fileData: string,
   fileName: string,
   wordText: string | undefined,
   apiKey: string,
+  model: string,
 ): Promise<ExtractedInvoice> {
-  const extension = fileName.split(".").pop()?.toLowerCase();
   const content: Array<Record<string, unknown>> = [
     { type: "input_text", text: PROMPT },
   ];
@@ -407,48 +430,60 @@ async function extractWithOpenAI(
       text: `Extract invoice information from the following Word document content. Preserve table row order and associations between challan numbers and dates:\n\n${wordText}`,
     });
   } else {
+    const pdfData = fileData.startsWith("data:")
+      ? fileData
+      : `data:application/pdf;base64,${stripDataUrl(fileData)}`;
+
     content.push({
       type: "input_file",
-      filename: fileName.toLowerCase().endsWith(".pdf") ? fileName : `invoice.${extension ?? "pdf"}`,
-      file_data: fileData,
+      filename: fileName,
+      file_data: pdfData,
     });
   }
 
-  const response = await fetch(OPENAI_RESPONSES_ENDPOINT, {
+  const response = await fetch(OPENROUTER_RESPONSES_ENDPOINT, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
+      "X-Title": "ABJAD ERP Invoice Extraction",
     },
     body: JSON.stringify({
-      model: OPENAI_FALLBACK_MODEL,
+      model,
       input: [{ role: "user", content }],
+      temperature: 0,
+      ...(wordText
+        ? {}
+        : {
+            plugins: [
+              {
+                id: "file-parser",
+                pdf: { engine: "cloudflare-ai" },
+              },
+            ],
+          }),
     }),
   });
 
   if (!response.ok) {
-    throw openAiApiError(response.status, await response.text());
+    throw apiError(response.status, await response.text());
   }
 
   const json: any = await response.json();
-  const output = getOpenAiOutputText(json);
+  const output = getResponsesOutputText(json);
 
   if (!output.trim()) {
-    throw new Error("OpenAI returned an empty extraction response.");
+    throw new Error("OpenRouter returned an empty extraction response.");
   }
 
   return parseContent(output);
 }
 
-export async function extractInvoiceFromFile(fileData: string, fileName: string): Promise<ExtractedInvoice> {
-  console.info("[Invoice AI] Extraction function entered", {
-    fileName,
-    fileSize: fileData?.length ?? 0,
-    hasGeminiKey: Boolean(
-      process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
-    ),
-    hasOpenAIKey: Boolean(process.env.OPENAI_API_KEY),
-  });
+
+export async function extractInvoiceFromFile(
+  fileData: string,
+  fileName: string,
+): Promise<ExtractedInvoice> {
   const extension = fileName.split(".").pop()?.toLowerCase();
 
   let wordText: string | undefined;
@@ -460,59 +495,124 @@ export async function extractInvoiceFromFile(fileData: string, fileName: string)
   }
 
   const failures: string[] = [];
-  const geminiKey = process.env["GEMINI_API_KEY"] || process.env["GOOGLE_API_KEY"];
 
+  const geminiKey =
+    process.env["GEMINI_API_KEY"] || process.env["GOOGLE_API_KEY"];
+
+  const groqKey = process.env["GROQ_API_KEY"];
+  const openRouterKey = process.env["OPENROUTER_API_KEY"];
+
+  console.info("[Invoice AI] Extraction started", {
+    fileName,
+    hasGeminiKey: Boolean(geminiKey),
+    hasGroqKey: Boolean(groqKey),
+    hasOpenRouterKey: Boolean(openRouterKey),
+  });
+
+  // 1. Gemini — primary provider
   if (geminiKey) {
     const geminiModels = getModelList(
       process.env["GEMINI_MODELS"] || process.env["GEMINI_MODEL"],
       DEFAULT_GEMINI_MODELS,
     );
+
     const body = buildGeminiBody(fileData, wordText);
 
     for (const model of geminiModels) {
       try {
         console.info(`[Invoice AI] Trying Gemini model: ${model}`);
+
         const result = await withTransientRetry(
           () => extractWithGemini(body, geminiKey, model),
           "Gemini",
           model,
         );
-        console.info(`[Invoice AI] Gemini model succeeded: ${model}`);
+
+        console.info(`[Invoice AI] Gemini succeeded: ${model}`);
         return result;
       } catch (error) {
         const message = errorMessage(error);
         failures.push(`Gemini ${model}: ${message}`);
-        console.error(`[Invoice AI] Gemini model failed: ${model}`, message);
+
+        console.error(`[Invoice AI] Gemini failed: ${model}`, message);
+
         if (isPermanentProviderError(error)) break;
       }
     }
   } else {
-    failures.push("Gemini: GEMINI_API_KEY / GOOGLE_API_KEY is not configured.");
-    console.warn("[Invoice AI] Gemini key is missing; moving to OpenAI fallback.");
+    failures.push("Gemini API key is not configured.");
   }
 
-  const openAiKey = process.env["OPENAI_API_KEY"];
-  if (!openAiKey) {
-    failures.push("OpenAI: OPENAI_API_KEY is not configured.");
-    throw new Error(
-      `Invoice extraction failed. Configure OPENAI_API_KEY to enable the fallback. ${failures.join(" | ")}`,
+  // 2. Groq — Word documents only
+  // Groq's Responses API accepts text and images, not direct PDF files.
+  if (wordText && groqKey) {
+    const groqModel =
+      process.env["GROQ_MODEL"] || DEFAULT_GROQ_MODEL;
+
+    try {
+      console.info(`[Invoice AI] Trying Groq fallback: ${groqModel}`);
+
+      const result = await withTransientRetry(
+        () => extractWithGroq(wordText!, groqKey, groqModel),
+        "Groq",
+        groqModel,
+      );
+
+      console.info(`[Invoice AI] Groq fallback succeeded: ${groqModel}`);
+      return result;
+    } catch (error) {
+      const message = errorMessage(error);
+      failures.push(`Groq ${groqModel}: ${message}`);
+
+      console.error(`[Invoice AI] Groq fallback failed: ${message}`);
+    }
+  } else if (wordText && !groqKey) {
+    failures.push("Groq: GROQ_API_KEY is not configured.");
+  } else if (!wordText) {
+    console.info(
+      "[Invoice AI] Skipping Groq for PDF; using OpenRouter for PDF fallback.",
     );
   }
 
-  try {
-    console.info(`[Invoice AI] Trying OpenAI fallback model: ${OPENAI_FALLBACK_MODEL}`);
-    const result = await withTransientRetry(
-      () => extractWithOpenAI(fileData, fileName, wordText, openAiKey),
-      "OpenAI",
-      OPENAI_FALLBACK_MODEL,
-    );
-    console.info(`[Invoice AI] OpenAI fallback succeeded: ${OPENAI_FALLBACK_MODEL}`);
-    return result;
-  } catch (error) {
-    const message = errorMessage(error);
-    console.error(`[Invoice AI] OpenAI fallback failed: ${message}`);
-    throw new Error(
-      `Could not read the document. Gemini and OpenAI extraction both failed. ${[...failures, `OpenAI ${OPENAI_FALLBACK_MODEL}: ${message}`].join(" | ")}`,
-    );
+  // 3. OpenRouter — final fallback for PDFs and Word documents
+  if (openRouterKey) {
+    const openRouterModel =
+      process.env["OPENROUTER_MODEL"] || DEFAULT_OPENROUTER_MODEL;
+
+    try {
+      console.info(
+        `[Invoice AI] Trying OpenRouter fallback: ${openRouterModel}`,
+      );
+
+      const result = await withTransientRetry(
+        () =>
+          extractWithOpenRouter(
+            fileData,
+            fileName,
+            wordText,
+            openRouterKey,
+            openRouterModel,
+          ),
+        "OpenRouter",
+        openRouterModel,
+      );
+
+      console.info(
+        `[Invoice AI] OpenRouter fallback succeeded: ${openRouterModel}`,
+      );
+
+      return result;
+    } catch (error) {
+      const message = errorMessage(error);
+      failures.push(`OpenRouter ${openRouterModel}: ${message}`);
+
+      console.error(`[Invoice AI] OpenRouter fallback failed: ${message}`);
+    }
+  } else {
+    failures.push("OpenRouter: OPENROUTER_API_KEY is not configured.");
   }
+
+  throw new Error(
+    `Invoice extraction failed. All available AI providers failed. ${failures.join(" | ")}`,
+  );
 }
