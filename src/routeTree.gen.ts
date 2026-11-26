@@ -16,6 +16,7 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AuthenticatedBackupsRouteImport } from './routes/_authenticated/backups'
 import { Route as AuthenticatedCancelledInvoicesRouteImport } from './routes/_authenticated/cancelled-invoices'
 import { Route as AuthenticatedChallansRouteImport } from './routes/_authenticated/challans'
+import { Route as AuthenticatedCreditDebitNotesRouteImport } from './routes/_authenticated/credit-debit-notes'
 import { Route as AuthenticatedCustomerCreditsRouteImport } from './routes/_authenticated/customer-credits'
 import { Route as AuthenticatedCustomersRouteImport } from './routes/_authenticated/customers'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
@@ -32,6 +33,7 @@ import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedUsersRouteImport } from './routes/_authenticated/users'
 import { Route as AuthenticatedChallansIndexRouteImport } from './routes/_authenticated/challans.index'
 import { Route as AuthenticatedChallansNewRouteImport } from './routes/_authenticated/challans.new'
+import { Route as AuthenticatedCreditDebitNotesNewRouteImport } from './routes/_authenticated/credit-debit-notes.new'
 import { Route as AuthenticatedInvoicesBulkImportRouteImport } from './routes/_authenticated/invoices.bulk-import'
 import { Route as AuthenticatedInvoicesImportRouteImport } from './routes/_authenticated/invoices.import'
 import { Route as AuthenticatedInvoicesNewRouteImport } from './routes/_authenticated/invoices.new'
@@ -85,6 +87,12 @@ const AuthenticatedChallansRoute = AuthenticatedChallansRouteImport.update({
   path: '/challans',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedCreditDebitNotesRoute =
+  AuthenticatedCreditDebitNotesRouteImport.update({
+    id: '/credit-debit-notes',
+    path: '/credit-debit-notes',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedCustomerCreditsRoute =
   AuthenticatedCustomerCreditsRouteImport.update({
     id: '/customer-credits',
@@ -168,6 +176,12 @@ const AuthenticatedChallansNewRoute =
     id: '/new',
     path: '/new',
     getParentRoute: () => AuthenticatedChallansRoute,
+  } as any)
+const AuthenticatedCreditDebitNotesNewRoute =
+  AuthenticatedCreditDebitNotesNewRouteImport.update({
+    id: '/new',
+    path: '/new',
+    getParentRoute: () => AuthenticatedCreditDebitNotesRoute,
   } as any)
 const AuthenticatedInvoicesBulkImportRoute =
   AuthenticatedInvoicesBulkImportRouteImport.update({
@@ -277,6 +291,7 @@ export interface FileRoutesByFullPath {
   '/backups': typeof AuthenticatedBackupsRoute
   '/cancelled-invoices': typeof AuthenticatedCancelledInvoicesRoute
   '/challans': typeof AuthenticatedChallansRouteWithChildren
+  '/credit-debit-notes': typeof AuthenticatedCreditDebitNotesRouteWithChildren
   '/customer-credits': typeof AuthenticatedCustomerCreditsRoute
   '/customers': typeof AuthenticatedCustomersRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -292,6 +307,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AuthenticatedSettingsRoute
   '/users': typeof AuthenticatedUsersRoute
   '/challans/new': typeof AuthenticatedChallansNewRoute
+  '/credit-debit-notes/new': typeof AuthenticatedCreditDebitNotesNewRoute
   '/invoices/bulk-import': typeof AuthenticatedInvoicesBulkImportRoute
   '/invoices/import': typeof AuthenticatedInvoicesImportRoute
   '/invoices/new': typeof AuthenticatedInvoicesNewRoute
@@ -317,6 +333,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/backups': typeof AuthenticatedBackupsRoute
   '/cancelled-invoices': typeof AuthenticatedCancelledInvoicesRoute
+  '/credit-debit-notes': typeof AuthenticatedCreditDebitNotesRouteWithChildren
   '/customer-credits': typeof AuthenticatedCustomerCreditsRoute
   '/customers': typeof AuthenticatedCustomersRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -329,6 +346,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthenticatedSettingsRoute
   '/users': typeof AuthenticatedUsersRoute
   '/challans/new': typeof AuthenticatedChallansNewRoute
+  '/credit-debit-notes/new': typeof AuthenticatedCreditDebitNotesNewRoute
   '/invoices/bulk-import': typeof AuthenticatedInvoicesBulkImportRoute
   '/invoices/import': typeof AuthenticatedInvoicesImportRoute
   '/invoices/new': typeof AuthenticatedInvoicesNewRoute
@@ -357,6 +375,7 @@ export interface FileRoutesById {
   '/_authenticated/backups': typeof AuthenticatedBackupsRoute
   '/_authenticated/cancelled-invoices': typeof AuthenticatedCancelledInvoicesRoute
   '/_authenticated/challans': typeof AuthenticatedChallansRouteWithChildren
+  '/_authenticated/credit-debit-notes': typeof AuthenticatedCreditDebitNotesRouteWithChildren
   '/_authenticated/customer-credits': typeof AuthenticatedCustomerCreditsRoute
   '/_authenticated/customers': typeof AuthenticatedCustomersRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
@@ -372,6 +391,7 @@ export interface FileRoutesById {
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/users': typeof AuthenticatedUsersRoute
   '/_authenticated/challans/new': typeof AuthenticatedChallansNewRoute
+  '/_authenticated/credit-debit-notes/new': typeof AuthenticatedCreditDebitNotesNewRoute
   '/_authenticated/invoices/bulk-import': typeof AuthenticatedInvoicesBulkImportRoute
   '/_authenticated/invoices/import': typeof AuthenticatedInvoicesImportRoute
   '/_authenticated/invoices/new': typeof AuthenticatedInvoicesNewRoute
@@ -400,6 +420,7 @@ export interface FileRouteTypes {
     | '/backups'
     | '/cancelled-invoices'
     | '/challans'
+    | '/credit-debit-notes'
     | '/customer-credits'
     | '/customers'
     | '/dashboard'
@@ -415,6 +436,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/users'
     | '/challans/new'
+    | '/credit-debit-notes/new'
     | '/invoices/bulk-import'
     | '/invoices/import'
     | '/invoices/new'
@@ -440,6 +462,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/backups'
     | '/cancelled-invoices'
+    | '/credit-debit-notes'
     | '/customer-credits'
     | '/customers'
     | '/dashboard'
@@ -452,6 +475,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/users'
     | '/challans/new'
+    | '/credit-debit-notes/new'
     | '/invoices/bulk-import'
     | '/invoices/import'
     | '/invoices/new'
@@ -479,6 +503,7 @@ export interface FileRouteTypes {
     | '/_authenticated/backups'
     | '/_authenticated/cancelled-invoices'
     | '/_authenticated/challans'
+    | '/_authenticated/credit-debit-notes'
     | '/_authenticated/customer-credits'
     | '/_authenticated/customers'
     | '/_authenticated/dashboard'
@@ -494,6 +519,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings'
     | '/_authenticated/users'
     | '/_authenticated/challans/new'
+    | '/_authenticated/credit-debit-notes/new'
     | '/_authenticated/invoices/bulk-import'
     | '/_authenticated/invoices/import'
     | '/_authenticated/invoices/new'
@@ -572,6 +598,13 @@ declare module '@tanstack/react-router' {
       path: '/challans'
       fullPath: '/challans'
       preLoaderRoute: typeof AuthenticatedChallansRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/credit-debit-notes': {
+      id: '/_authenticated/credit-debit-notes'
+      path: '/credit-debit-notes'
+      fullPath: '/credit-debit-notes'
+      preLoaderRoute: typeof AuthenticatedCreditDebitNotesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/customer-credits': {
@@ -685,6 +718,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/challans/new'
       preLoaderRoute: typeof AuthenticatedChallansNewRouteImport
       parentRoute: typeof AuthenticatedChallansRoute
+    }
+    '/_authenticated/credit-debit-notes/new': {
+      id: '/_authenticated/credit-debit-notes/new'
+      path: '/new'
+      fullPath: '/credit-debit-notes/new'
+      preLoaderRoute: typeof AuthenticatedCreditDebitNotesNewRouteImport
+      parentRoute: typeof AuthenticatedCreditDebitNotesRoute
     }
     '/_authenticated/invoices/bulk-import': {
       id: '/_authenticated/invoices/bulk-import'
@@ -826,6 +866,21 @@ const AuthenticatedChallansRouteWithChildren =
     AuthenticatedChallansRouteChildren,
   )
 
+interface AuthenticatedCreditDebitNotesRouteChildren {
+  AuthenticatedCreditDebitNotesNewRoute: typeof AuthenticatedCreditDebitNotesNewRoute
+}
+
+const AuthenticatedCreditDebitNotesRouteChildren: AuthenticatedCreditDebitNotesRouteChildren =
+  {
+    AuthenticatedCreditDebitNotesNewRoute:
+      AuthenticatedCreditDebitNotesNewRoute,
+  }
+
+const AuthenticatedCreditDebitNotesRouteWithChildren =
+  AuthenticatedCreditDebitNotesRoute._addFileChildren(
+    AuthenticatedCreditDebitNotesRouteChildren,
+  )
+
 interface AuthenticatedInvoicesRouteChildren {
   AuthenticatedInvoicesBulkImportRoute: typeof AuthenticatedInvoicesBulkImportRoute
   AuthenticatedInvoicesImportRoute: typeof AuthenticatedInvoicesImportRoute
@@ -908,6 +963,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedBackupsRoute: typeof AuthenticatedBackupsRoute
   AuthenticatedCancelledInvoicesRoute: typeof AuthenticatedCancelledInvoicesRoute
   AuthenticatedChallansRoute: typeof AuthenticatedChallansRouteWithChildren
+  AuthenticatedCreditDebitNotesRoute: typeof AuthenticatedCreditDebitNotesRouteWithChildren
   AuthenticatedCustomerCreditsRoute: typeof AuthenticatedCustomerCreditsRoute
   AuthenticatedCustomersRoute: typeof AuthenticatedCustomersRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
@@ -928,6 +984,8 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedBackupsRoute: AuthenticatedBackupsRoute,
   AuthenticatedCancelledInvoicesRoute: AuthenticatedCancelledInvoicesRoute,
   AuthenticatedChallansRoute: AuthenticatedChallansRouteWithChildren,
+  AuthenticatedCreditDebitNotesRoute:
+    AuthenticatedCreditDebitNotesRouteWithChildren,
   AuthenticatedCustomerCreditsRoute: AuthenticatedCustomerCreditsRoute,
   AuthenticatedCustomersRoute: AuthenticatedCustomersRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,

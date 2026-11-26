@@ -18,18 +18,19 @@ interface BuildDocumentPayloadArgs {
   contactMobile: string;
   notes: string;
   status: "draft" | "sent";
-
+  
   isChallan: boolean;
   isTaxInvoice: boolean;
   isIGST: boolean;
-
+  
   challanNumber: string;
   challanDates: string[];
   movementReason: string;
   transporterName: string;
   placeOfDispatch: string;
   placeOfDelivery: string;
-
+  isNote: boolean;
+  
   totals: {
     net: number;
     disc: number;
@@ -54,6 +55,7 @@ export function buildDocumentPayload({
   poNumber,
   poDate,
   invoiceType,
+  isNote,
   invoiceDate,
   customerId,
   customerName,
@@ -136,7 +138,7 @@ export function buildDocumentPayload({
       amount_in_words: amountInWords(totals.grand),
       payment_terms: paymentTerms || null,
     });
-    if (isTaxInvoice) {
+    if (isTaxInvoice || isNote) {
       Object.assign(payload, {
         transportation_charges: Number(transportCharges || 0),
         delivery_charges: Number(deliveryCharges || 0),

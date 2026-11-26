@@ -1,9 +1,19 @@
 
-import { createFileRoute, Outlet, useNavigate, Link, useRouterState } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Outlet,
+  useNavigate,
+  Link,
+  useRouterState,
+} from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { PANELS } from "@/lib/panels";
-import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
+import {
+  SidebarProvider,
+  SidebarTrigger,
+  SidebarInset,
+} from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { GlobalSearch } from "@/components/global-search";
 import { Button } from "@/components/ui/button";
@@ -12,9 +22,18 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 
-import { ChevronDown, FileSpreadsheet, FileText, Plus, ShoppingCart, Truck } from "lucide-react";
+import {
+  ChevronDown,
+  FileSpreadsheet,
+  FileText,
+  Plus,
+  ShoppingCart,
+  Truck,
+} from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated")({
   component: AuthedLayout,
@@ -42,14 +61,12 @@ function AuthedLayout() {
     .find((p) => path === p.url || path.startsWith(p.url + "/"));
 
   const allowed = isAdmin || !matched || canAccess(matched.key);
-
-  // Check individual Create permissions for each document type.
   const canCreateInvoice = canPerform("tax_invoice", "create");
   const canCreateProforma = canPerform("proforma", "create");
   const canCreateQuotation = canPerform("quotation", "create");
   const canCreateChallan = canPerform("delivery_challan", "create");
-
-  // Purchase Orders retain their existing panel-access permission.
+  const canCreateCreditNote = canPerform("credit_note", "create");
+  const canCreateDebitNote = canPerform("debit_note", "create");
   const canCreatePO = canAccess("purchases");
 
   const showCreateMenu =
@@ -57,6 +74,8 @@ function AuthedLayout() {
     canCreateProforma ||
     canCreateQuotation ||
     canCreateChallan ||
+    canCreateCreditNote ||
+    canCreateDebitNote ||
     canCreatePO;
 
   return (
@@ -80,7 +99,7 @@ function AuthedLayout() {
                     </Button>
                   </DropdownMenuTrigger>
 
-                  <DropdownMenuContent align="end" className="w-52">
+                  <DropdownMenuContent align="end" className="w-56">
                     {canCreateInvoice && (
                       <DropdownMenuItem asChild>
                         <Link to="/invoices/new">
@@ -113,12 +132,40 @@ function AuthedLayout() {
                       </DropdownMenuItem>
                     )}
 
-                    {canCreatePO && (
+                    {(canCreateCreditNote || canCreateDebitNote) && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel>
+                          Credit / Debit Notes
+                        </DropdownMenuLabel>
+                      </>
+                    )}
+
+                    {canCreateCreditNote && (
                       <DropdownMenuItem asChild>
-                        <Link to="/purchases/new">
-                          <ShoppingCart /> New PO
+                        <Link to="/credit-debit-notes/new" search={{ kind: "credit_note" }}>
+                          <FileText /> New Credit Note
                         </Link>
                       </DropdownMenuItem>
+                    )}
+
+                    {canCreateDebitNote && (
+                      <DropdownMenuItem asChild>
+                        <Link to="/credit-debit-notes/new" search={{ kind: "debit_note" }}>
+                          <FileText /> New Debit Note
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
+
+                    {canCreatePO && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem asChild>
+                          <Link to="/purchases/new">
+                            <ShoppingCart /> New PO
+                          </Link>
+                        </DropdownMenuItem>
+                      </>
                     )}
                   </DropdownMenuContent>
                 </DropdownMenu>

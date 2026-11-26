@@ -19,6 +19,8 @@ const DOCUMENT_PANEL_MAP: Record<SalesDocumentKind, string> = {
   proforma: "proforma-form",
   quotation: "quotations",
   delivery_challan: "challans",
+  credit_note: "credit-debit-notes",
+  debit_note: "credit-debit-notes",
 };
 
 const DOCUMENT_KINDS = Object.keys(
@@ -160,6 +162,8 @@ export const listAppUsers = createServerFn({ method: "GET" })
         proforma: [],
         quotation: [],
         delivery_challan: [],
+        credit_note: [],
+        debit_note: [],
       };
 
       actions

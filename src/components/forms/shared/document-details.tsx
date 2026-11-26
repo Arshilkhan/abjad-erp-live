@@ -33,6 +33,7 @@ interface InvoiceSettings {
 }
 
 interface DocumentDetailsProps {
+  isNote: boolean
   referenceChallanNumber: string;
   referenceChallanDates: string[];
   referenceChallanDateInput: string;
@@ -109,6 +110,7 @@ export function DocumentDetails({
   addReferenceChallanDate,
   setReferenceChallanNumber,
   isChallan,
+  isNote,
   isEdit,
   isTaxInvoice,
   isIGST,
@@ -164,7 +166,7 @@ export function DocumentDetails({
       <Card className="lg:col-span-2">
         <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
           <CardTitle className="text-base">
-            {isChallan ? "Delivery Challan Details" : "Invoice Details"}
+            {isChallan ? "Delivery Challan Details" : isNote ? `${docLabel} Details` : "Invoice Details"}
           </CardTitle>
 
           {!isEdit && isTaxInvoice && (
@@ -321,7 +323,7 @@ export function DocumentDetails({
 
           <div className="space-y-1.5">
             <Label className="text-xs">
-              {isChallan ? "Delivery Challan Date" : "Date"}
+              {isChallan ? "Delivery Challan Date" : isNote ? `${docLabel} Date` : "Date"}
             </Label>
             <Input
               type="date"
@@ -330,7 +332,7 @@ export function DocumentDetails({
             />
           </div>
 
-          {isTaxInvoice && !isChallan && (
+          {(isTaxInvoice || isNote) && !isChallan && (
             <>
               <div className="space-y-1.5">
                 <Label className="text-xs">PO No.</Label>

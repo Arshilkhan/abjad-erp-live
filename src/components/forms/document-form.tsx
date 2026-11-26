@@ -35,8 +35,11 @@ const REFERENCE_STALE_MS = 5 * 60 * 1000;
 const DOCUMENT_NUMBER_LABELS: Record<string, string> = {
   tax_invoice: "Invoice Number",
   proforma: "Proforma Invoice Number",
+  quotation: "Quotation Number",
+  credit_note: "Credit Note Number",
+  debit_note: "Debit Note Number",
 };
-const getDocumentNumberLabel = (type: string) => DOCUMENT_NUMBER_LABELS[type] ?? "Quotation Number";
+const getDocumentNumberLabel = (type: string) => DOCUMENT_NUMBER_LABELS[type] ?? "Document Number";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
@@ -156,7 +159,7 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
   const docCfg = salesDocumentConfig(documentType);
   const docTable = docCfg.table as "invoices";
   const docItemsTable = docCfg.itemsTable as "invoice_items";
-  const { isTaxInvoice, isChallan } = formConfig;
+  const { isTaxInvoice, isChallan, isNote } = formConfig;
   const isEdit = !!editId;
 
   const nav = useNavigate();
@@ -451,6 +454,7 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
       ]);
 
       const payload = buildDocumentPayload({
+        isNote,
         invoiceType,
         invoiceDate,
         customerId: cust.id,
@@ -618,6 +622,7 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
       }
       details={
         <DocumentDetails
+          isNote={isNote}
           referenceChallanNumber={referenceChallanNumber}
           referenceChallanDates={referenceChallanDates}
           referenceChallanDateInput={referenceChallanDateInput}

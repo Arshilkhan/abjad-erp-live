@@ -26,6 +26,8 @@ const DOCUMENT_PANEL_MAP: Record<SalesDocumentKind, string> = {
   proforma: "proforma-form",
   quotation: "quotations",
   delivery_challan: "challans",
+  credit_note: "credit-debit-notes",
+  debit_note: "credit-debit-notes",
 };
 
 const EMPTY_DOCUMENT_PERMISSIONS: DocumentPermissions = {
@@ -33,6 +35,8 @@ const EMPTY_DOCUMENT_PERMISSIONS: DocumentPermissions = {
   proforma: [],
   quotation: [],
   delivery_challan: [],
+  credit_note: [],
+  debit_note: [],
 };
 
 interface AuthCtx {
@@ -109,6 +113,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       proforma: [],
       quotation: [],
       delivery_challan: [],
+      credit_note: [],
+      debit_note: [],
     };
 
     if (!actionError) {

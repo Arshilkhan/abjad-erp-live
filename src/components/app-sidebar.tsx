@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 const main = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, panel: "dashboard" },
   { title: "Invoices", url: "/invoices", icon: ReceiptText, panel: "invoices" },
+  { title: "Credit / Debit Notes", url: "/credit-debit-notes", icon: FileText, panel: "credit-debit-notes" },
   { title: "Proforma Invoices", url: "/proformas", icon: FileText, panel: "invoices" },
   { title: "Quotations", url: "/quotations", icon: FileSpreadsheet, panel: "quotations" },
   { title: "Challans", url: "/challans", icon: Truck, panel: "challans" },

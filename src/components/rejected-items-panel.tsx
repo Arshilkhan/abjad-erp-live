@@ -101,7 +101,6 @@ export function RejectedItemsPanel({
       return toast.error(error.message);
     }
 
-    // Update invoice_items rejected/accepted quantities and recompute line values
     const newRejectedByItem: Record<string, number> = { ...rejectedByItem };
     for (const [itemId, d] of entries) {
       newRejectedByItem[itemId] = (newRejectedByItem[itemId] ?? 0) + Number(d.qty);

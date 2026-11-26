@@ -71,7 +71,7 @@ export async function saveDocument({
 
     if (error?.code === "23505" && !isChallan) {
       throw new Error(
-        "This document number is already in use in this financial year.",
+        `Document number "${String(payload.invoice_number).trim()}" is already used by another ${documentType.replace("_", " ")} in this financial year.`,
       );
     }
 
@@ -114,7 +114,7 @@ export async function saveDocument({
 
     if (error?.code === "23505") {
       throw new Error(
-        "This document number is already in use in this financial year.",
+        `Document number "${String(payload.invoice_number).trim()}" is already used by another ${documentType.replace("_", " ")} in this financial year.`,
       );
     }
 
@@ -123,7 +123,6 @@ export async function saveDocument({
     invId = inv.id;
     invNumber = inv.invoice_number;
   } else {
-    // Existing automatic Challan numbering logic — preserved.
     const slug =
       customerName
         .toLowerCase()
@@ -196,6 +195,7 @@ export async function saveDocument({
   }
 
   // Save document line items.
+  // cd_items.invoice_id references cd_notes.id for credit/debit notes.
   const rows = buildDocumentItemRows(
     items,
     invId,

@@ -1,6 +1,7 @@
 export const PANELS = [
   { key: "dashboard", label: "Dashboard", url: "/dashboard" },
   { key: "invoices", label: "Invoices", url: "/invoices" },
+  { key: "credit-debit-notes", label: "Credit / Debit Notes", url: "/credit-debit-notes" },
   { key: "proforma-form", label: "Proforma Invoices", url: "/proformas" }, //Newly added
   { key: "quotations", label: "Quotations", url: "/quotations" },
   { key: "challans", label: "Challans", url: "/challans" },

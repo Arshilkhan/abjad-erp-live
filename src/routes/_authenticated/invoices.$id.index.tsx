@@ -140,7 +140,51 @@ function InvoiceDetail() {
   const typeLabel = typeLabels[invoice.invoice_type] ?? "TAX INVOICE";
   const isCancelled = invoice.status === "cancelled";
 
+
   const duplicate = async () => {
+    const invoiceBackedKinds: SalesDocumentKind[] = [
+      "tax_invoice",
+      "credit_note",
+      "debit_note",
+    ];
+
+    // Use the secure database function for invoices and notes.
+    if (invoiceBackedKinds.includes(kind)) {
+      const { data: newId, error } = await supabase.rpc(
+        "duplicate_invoice_document",
+        { _invoice_id: invoice.id }
+      );
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      if (!newId) {
+        toast.error("Could not duplicate the document");
+        return;
+      }
+
+      if (kind === "tax_invoice") {
+        await logInvoiceEvent(
+          newId,
+          "duplicated",
+          `Duplicated from ${invoice.invoice_number}`
+        );
+      }
+
+      toast.success(`${cfg.label} duplicated as draft`);
+
+      nav({
+        to: "/invoices/$id",
+        params: { id: newId },
+        search: { kind },
+      });
+
+      return;
+    }
+
+    // Preserve the existing duplication flow for other document types.
     const duplicatePayload: any = {
       invoice_number: `${invoice.invoice_number}-COPY-${Date.now().toString().slice(-4)}`,
       invoice_type: invoice.invoice_type,
@@ -156,6 +200,7 @@ function InvoiceDetail() {
       notes: invoice.notes,
       status: "draft",
     };
+
     if (kind === "delivery_challan") {
       Object.assign(duplicatePayload, {
         challan_number: invoice.challan_number,
@@ -188,35 +233,63 @@ function InvoiceDetail() {
         reference_challan_date: invoice.reference_challan_date,
       });
     }
-    const { data: newInv, error } = await supabase.from(docTable).insert(duplicatePayload).select("id").single();
-    if (error) return toast.error(error.message);
-    if (items.length && newInv) {
-      await supabase.from(itemsTable).insert(items.map((it: any) => {
-        const base = {
-          invoice_id: newInv.id,
-          sr_no: it.sr_no,
-          product_id: it.product_id,
-          hsn_code: it.hsn_code,
-          description: it.description,
-          quantity: it.quantity,
-          uom: it.uom,
-          serial_batch_number: it.serial_batch_number,
-        };
-        return kind === "delivery_challan" ? base : {
-          ...base,
-          unit_rate: it.unit_rate,
-          discount_pct: it.discount_pct,
-          discount_amount: it.discount_amount,
-          tax_pct: it.tax_pct,
-          tax_amount: it.tax_amount,
-          total_amount: it.total_amount,
-        };
-      }));
+
+    const { data: newInv, error } = await supabase
+      .from(docTable)
+      .insert(duplicatePayload)
+      .select("id")
+      .single();
+
+    if (error) {
+      toast.error(error.message);
+      return;
     }
-    if (newInv && isTax) await logInvoiceEvent(newInv.id, "duplicated", `Duplicated from ${invoice.invoice_number}`);
+
+    if (items.length && newInv) {
+      const { error: itemsError } = await supabase
+        .from(itemsTable)
+        .insert(
+          items.map((it: any) => {
+            const base = {
+              invoice_id: newInv.id,
+              sr_no: it.sr_no,
+              product_id: it.product_id,
+              hsn_code: it.hsn_code,
+              description: it.description,
+              quantity: it.quantity,
+              uom: it.uom,
+              serial_batch_number: it.serial_batch_number,
+            };
+
+            return kind === "delivery_challan"
+              ? base
+              : {
+                ...base,
+                unit_rate: it.unit_rate,
+                discount_pct: it.discount_pct,
+                discount_amount: it.discount_amount,
+                tax_pct: it.tax_pct,
+                tax_amount: it.tax_amount,
+                total_amount: it.total_amount,
+              };
+          })
+        );
+
+      if (itemsError) {
+        toast.error(itemsError.message);
+        return;
+      }
+    }
+
     toast.success(`${cfg.label} duplicated as draft`);
-    nav({ to: "/invoices/$id", params: { id: newInv!.id }, search: { kind } });
+
+    nav({
+      to: "/invoices/$id",
+      params: { id: newInv.id },
+      search: { kind },
+    });
   };
+
 
   const markSent = async () => {
     const { error } = await supabase.from(docTable).update({ status: "sent" }).eq("id", id);
@@ -226,13 +299,44 @@ function InvoiceDetail() {
     qc.invalidateQueries({ queryKey: ["invoice", kind, id] });
   };
 
+
   const cancelOther = async () => {
-    if (!window.confirm(`Cancel this ${cfg.label.toLowerCase()}?`)) return;
-    const { error } = await supabase.from(docTable).update({ status: "cancelled" }).eq("id", id);
-    if (error) return toast.error(error.message);
+    if (!window.confirm(`Cancel this ${cfg.label.toLowerCase()}?`)) {
+      return;
+    }
+
+    if (kind === "credit_note" || kind === "debit_note") {
+      const { error } = await supabase.rpc(
+        "cancel_invoice_document",
+        {
+          _invoice_id: invoice.id,
+          _reason: "Cancelled by user",
+        }
+      );
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+    } else {
+      const { error } = await supabase
+        .from(docTable)
+        .update({ status: "cancelled" })
+        .eq("id", id);
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+    }
+
     toast.success(`${cfg.label} cancelled`);
-    qc.invalidateQueries({ queryKey: ["invoice", kind, id] });
+
+    await qc.invalidateQueries({
+      queryKey: ["invoice", kind, id],
+    });
   };
+
 
   return (
     <>
