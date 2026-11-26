@@ -30,6 +30,7 @@ export type LedgerInvoice = {
     invoice_type: string | null;
     grand_total: number | null;
     amount_paid: number | null;
+    status?: string | null;
 };
 
 export type LedgerPayment = {
@@ -259,16 +260,36 @@ async function downloadWorkbook(workbook: ExcelJS.Workbook, filename: string) {
     URL.revokeObjectURL(url);
 }
 type LedgerTransaction =
-    | { type: "invoice"; date: string; invoice: LedgerInvoice }
+    | { type: "document"; date: string; document: LedgerInvoice }
     | { type: "payment"; date: string; payment: LedgerPayment };
 
-function sortLedgerTransactions(invoices: LedgerInvoice[], payments: LedgerPayment[]) {
-    // Single pass per list (previously filter + map, i.e. two passes each).
+function documentLabel(type: string | null) {
+    switch (type) {
+        case "tax_invoice": return "Tax Invoice";
+        case "credit_note": return "Credit Note";
+        case "debit_note": return "Debit Note";
+        default: return "Document";
+    }
+}
+
+function documentDebit(document: LedgerInvoice) {
+    return document.invoice_type === "tax_invoice" || document.invoice_type === "debit_note"
+        ? Number(document.grand_total ?? 0)
+        : 0;
+}
+
+function documentCredit(document: LedgerInvoice) {
+    return document.invoice_type === "credit_note"
+        ? Number(document.grand_total ?? 0)
+        : 0;
+}
+
+function sortLedgerTransactions(documents: LedgerInvoice[], payments: LedgerPayment[]) {
     const transactions: LedgerTransaction[] = [];
 
-    for (const invoice of invoices) {
-        if (invoice.invoice_date) {
-            transactions.push({ type: "invoice", date: invoice.invoice_date, invoice });
+    for (const document of documents) {
+        if (document.invoice_date) {
+            transactions.push({ type: "document", date: document.invoice_date, document });
         }
     }
     for (const payment of payments) {
@@ -280,13 +301,15 @@ function sortLedgerTransactions(invoices: LedgerInvoice[], payments: LedgerPayme
     return transactions.sort((a, b) => {
         const dateComparison = collator.compare(a.date, b.date);
         if (dateComparison !== 0) return dateComparison;
-
-        if (a.type !== b.type) {
-            return a.type === "invoice" ? -1 : 1;
+        if (a.type !== b.type) return a.type === "document" ? -1 : 1;
+        if (a.type === "document" && b.type === "document") {
+            const priority = (type: string | null) => type === "credit_note" ? 1 : 0;
+            const priorityDifference = priority(a.document.invoice_type) - priority(b.document.invoice_type);
+            if (priorityDifference !== 0) return priorityDifference;
+            return collator.compare(a.document.invoice_number ?? "", b.document.invoice_number ?? "");
         }
-
-        if (a.type === "invoice" && b.type === "invoice") {
-            return collator.compare(a.invoice.invoice_number ?? "", b.invoice.invoice_number ?? "");
+        if (a.type === "payment" && b.type === "payment") {
+            return collator.compare(a.payment.id, b.payment.id);
         }
 
         return 0;
@@ -318,7 +341,7 @@ export async function downloadCustomerLedgerXLSX(
 
     addCompanyAndCustomerHeader(sheet, company, customer, financialYear, effectiveEndDate);
 
-    const header = sheet.addRow(["Invoice No.", "Date", "Type", "Invoice Total", "Paid", "Grand Total"]);
+    const header = sheet.addRow(["Reference No.", "Date", "Transaction Type", "Debit", "Credit", "Balance"]);
     styleTableHeader(header);
     header.height = 22.5;
     header.alignment = ALIGN_LEFT;
@@ -338,26 +361,31 @@ export async function downloadCustomerLedgerXLSX(
     for (const transaction of sortLedgerTransactions(invoices, customerPayments)) {
         let row: ExcelJS.Row;
 
-        if (transaction.type === "invoice") {
-            const total = Number(transaction.invoice.grand_total ?? 0);
-            runningTotal += total;
-
+        if (transaction.type === "payment") {
+            const credit = Number(transaction.payment.amount ?? 0);
+            runningTotal -= credit;
             row = sheet.addRow([
-                billNo(transaction.invoice.invoice_number),
+                "",
                 formatDate(transaction.date),
-                "Tax Invoice",
-                total,
+                "Payment",
                 0,
+                credit,
                 runningTotal,
             ]);
         } else {
-            const paid = Number(transaction.payment.amount ?? 0);
-            runningTotal -= paid;
-
-            row = sheet.addRow(["", formatDate(transaction.date), "Payment", "", paid, runningTotal]);
+            const debit = documentDebit(transaction.document);
+            const credit = documentCredit(transaction.document);
+            runningTotal += debit - credit;
+            row = sheet.addRow([
+                billNo(transaction.document.invoice_number),
+                formatDate(transaction.date),
+                documentLabel(transaction.document.invoice_type),
+                debit,
+                credit,
+                runningTotal,
+            ]);
         }
 
-        // Align at creation time: one row operation instead of 6 per-cell lookups later.
         row.alignment = ALIGN_LEFT;
     }
 
@@ -381,94 +409,83 @@ export async function downloadCompanyLedgerXLSX(
     company: LedgerCompanyProfile,
     customers: LedgerCustomer[],
     invoices: LedgerInvoice[],
+    payments: LedgerPayment[],
     openingBalances: LedgerOpeningBalance[],
     financialYear: FinancialYear,
     effectiveEndDate: string,
     dateSuffix: string,
 ) {
-    if (!invoices.length && !openingBalances.length) return;
+    if (!invoices.length && !payments.length && !openingBalances.length) return;
 
     const workbook = await createWorkbook();
     const sheet = workbook.addWorksheet("Company Ledger");
 
     addCompanyHeader(sheet, company, financialYear, effectiveEndDate);
 
-    // Build one opening-balance row per customer, followed by that customer's
-    // invoices. Opening balances are scoped to the selected financial year.
+    // Merge opening balances, documents and receipts into one chronological ledger per customer.
     type CompanyLedgerEntry =
-        | {
-              type: "opening";
-              customer: LedgerCustomer | undefined;
-              name: string;
-              openingBalance: number;
-          }
-        | {
-              type: "invoice";
-              customer: LedgerCustomer | undefined;
-              name: string;
-              invoice: LedgerInvoice;
-          };
+        | { type: "opening"; customer: LedgerCustomer; name: string; date: string; openingBalance: number }
+        | { type: "document"; customer: LedgerCustomer | undefined; name: string; date: string; document: LedgerInvoice }
+        | { type: "payment"; customer: LedgerCustomer | undefined; name: string; date: string; payment: LedgerPayment };
 
     const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
-
     const entries: CompanyLedgerEntry[] = [];
 
     for (const balance of openingBalances) {
         const customer = customerMap.get(balance.customer_id);
         if (!customer) continue;
-
-        const name =
-            customer.company_name?.trim() ||
-            customer.customer_name?.trim() ||
-            "Unnamed customer";
-
-        entries.push({
-            type: "opening",
-            customer,
-            name,
-            openingBalance: Number(balance.opening_balance ?? 0),
-        });
+        const name = customer.company_name?.trim() || customer.customer_name?.trim() || "Unnamed customer";
+        entries.push({ type: "opening", customer, name, date: financialYear.start_date, openingBalance: Number(balance.opening_balance ?? 0) });
     }
 
-    for (const invoice of invoices) {
-        const customer = customerMap.get(invoice.customer_id ?? "");
-        const name =
-            customer?.company_name?.trim() ||
-            customer?.customer_name?.trim() ||
-            invoice.customer_name_snapshot ||
-            "Unknown Customer";
+    for (const document of invoices) {
+        if (!document.invoice_date) continue;
+        const customer = customerMap.get(document.customer_id ?? "");
+        const name = customer?.company_name?.trim() || customer?.customer_name?.trim() || document.customer_name_snapshot || "Unknown Customer";
+        entries.push({ type: "document", document, customer, name, date: document.invoice_date });
+    }
 
-        entries.push({ type: "invoice", invoice, customer, name });
+    for (const payment of payments) {
+        if (payment.status !== "received" || !payment.payment_date) continue;
+        const customer = customerMap.get(payment.customer_id ?? "");
+        const name = customer?.company_name?.trim() || customer?.customer_name?.trim() || "Unknown Customer";
+        entries.push({ type: "payment", payment, customer, name, date: payment.payment_date });
     }
 
     entries.sort((a, b) => {
         const nameComparison = collator.compare(a.name, b.name);
         if (nameComparison !== 0) return nameComparison;
-
-        // Always place the opening balance before the customer's invoices.
-        if (a.type !== b.type) return a.type === "opening" ? -1 : 1;
-
-        if (a.type === "invoice" && b.type === "invoice") {
-            return (
-                collator.compare(a.invoice.invoice_date ?? "", b.invoice.invoice_date ?? "") ||
-                collator.compare(a.invoice.invoice_number ?? "", b.invoice.invoice_number ?? "")
-            );
+        if (a.type === "opening" || b.type === "opening") {
+            if (a.type === "opening" && b.type !== "opening") return -1;
+            if (b.type === "opening" && a.type !== "opening") return 1;
+            return 0;
+        }
+        const dateComparison = collator.compare(a.date, b.date);
+        if (dateComparison !== 0) return dateComparison;
+        if (a.type !== b.type) return a.type === "document" ? -1 : 1;
+        if (a.type === "document" && b.type === "document") {
+            const priority = (type: string | null) => type === "credit_note" ? 1 : 0;
+            const priorityDifference = priority(a.document.invoice_type) - priority(b.document.invoice_type);
+            if (priorityDifference !== 0) return priorityDifference;
+            return collator.compare(a.document.invoice_number ?? "", b.document.invoice_number ?? "");
+        }
+        if (a.type === "payment" && b.type === "payment") {
+            return collator.compare(a.payment.id, b.payment.id);
         }
 
         return 0;
     });
 
     const runningTotals = new Map<string, number>();
-
     const header = sheet.addRow([
         "Customer Name",
         "Billing Address",
-        "Invoice Number",
+        "Reference No.",
         "Date",
-        "Invoice Type",
-        "Invoice Total",
-        "Amount Paid",
-        "Grand Total",
+        "Transaction Type",
+        "Debit",
+        "Credit",
+        "Balance",
     ]);
     styleTableHeader(header);
 
@@ -478,35 +495,46 @@ export async function downloadCompanyLedgerXLSX(
 
         if (entry.type === "opening") {
             runningTotals.set(customerKey, entry.openingBalance);
-
             row = sheet.addRow([
                 entry.name,
-                entry.customer?.billing_address ?? "",
+                entry.customer.billing_address ?? "",
                 "",
-                formatDate(financialYear.start_date),
+                formatDate(entry.date),
                 "Opening Balance",
-                "",
-                "",
+                0,
+                0,
                 entry.openingBalance,
             ]);
-        } else {
-            const total = Number(entry.invoice.grand_total ?? 0);
-            const runningTotal = (runningTotals.get(customerKey) ?? 0) + total;
-
-            runningTotals.set(customerKey, runningTotal);
-
+        } else if (entry.type === "payment") {
+            const credit = Number(entry.payment.amount ?? 0);
+            const balance = (runningTotals.get(customerKey) ?? 0) - credit;
+            runningTotals.set(customerKey, balance);
             row = sheet.addRow([
                 entry.name,
                 entry.customer?.billing_address ?? "",
-                billNo(entry.invoice.invoice_number),
-                formatDate(entry.invoice.invoice_date),
-                "Tax Invoice",
-                total,
-                Number(entry.invoice.amount_paid ?? 0),
-                runningTotal,
+                "",
+                formatDate(entry.date),
+                "Payment",
+                0,
+                credit,
+                balance,
+            ]);
+        } else {
+            const debit = documentDebit(entry.document);
+            const credit = documentCredit(entry.document);
+            const balance = (runningTotals.get(customerKey) ?? 0) + debit - credit;
+            runningTotals.set(customerKey, balance);
+            row = sheet.addRow([
+                entry.name,
+                entry.customer?.billing_address ?? "",
+                billNo(entry.document.invoice_number),
+                formatDate(entry.date),
+                documentLabel(entry.document.invoice_type),
+                debit,
+                credit,
+                balance,
             ]);
         }
-
         row.alignment = ALIGN_LEFT;
     }
 

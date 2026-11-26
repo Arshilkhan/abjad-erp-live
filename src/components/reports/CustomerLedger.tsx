@@ -1,4 +1,3 @@
-import { sortByInvoiceNumber } from "./shared/invoice-sort";
 import { memo, useCallback, useDeferredValue, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -79,19 +78,21 @@ type CustomerSummary = Customer & {
     invoiceCount: number;
 };
 const EMPTY_INVOICES: Invoice[] = [];
+const EMPTY_NOTES: Invoice[] = [];
 const EMPTY_PAYMENTS: Payment[] = [];
 const EMPTY_OPENING_BALANCES: CustomerOpeningBalance[] = [];
 const COMPANY_PROFILE_STALE_MS = 10 * 60 * 1000;
 
-const INVOICE_TABLE_HEADER = (
+const TRANSACTION_TABLE_HEADER = (
     <TableHeader>
         <TableRow>
-            <TableHead>Invoice</TableHead>
+            <TableHead>Reference</TableHead>
             <TableHead>Date</TableHead>
+            <TableHead>Transaction</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead className="text-right">Billed</TableHead>
-            <TableHead className="text-right">Paid</TableHead>
-            <TableHead className="text-right">Outstanding</TableHead>
+            <TableHead className="text-right">Debit</TableHead>
+            <TableHead className="text-right">Credit</TableHead>
+            <TableHead className="text-right">Balance</TableHead>
         </TableRow>
     </TableHeader>
 );
@@ -126,7 +127,6 @@ function TotalTile({
     return (
         <div className="rounded-lg border p-3">
             <p className="text-xs text-muted-foreground">{label}</p>
-
             <p className={`text-lg font-semibold tabular-nums ${valueClassName}`}>
                 {formatINR(value)}
             </p>
@@ -134,38 +134,29 @@ function TotalTile({
     );
 }
 
-const InvoiceRow = memo(function InvoiceRow({ invoice }: { invoice: Invoice }) {
-    const billed = Number(invoice.grand_total ?? 0);
-    const paid = Number(invoice.amount_paid ?? 0);
+type LedgerDisplayTransaction =
+    | { id: string; kind: "document"; date: string; document: Invoice }
+    | { id: string; kind: "payment"; date: string; payment: Payment };
 
-    return (
-        <TableRow>
-            <TableCell className="font-mono text-xs">
-                {billNo(invoice.invoice_number)}
-            </TableCell>
+type LedgerDisplayRow = {
+    id: string;
+    reference: string;
+    date: string;
+    type: string;
+    status: string;
+    debit: number;
+    credit: number;
+    balance: number;
+};
 
-            <TableCell>
-                {invoice.invoice_date ? formatDate(invoice.invoice_date) : "—"}
-            </TableCell>
-
-            <TableCell className="text-xs uppercase">
-                {invoice.status ?? "—"}
-            </TableCell>
-
-            <TableCell className="text-right tabular-nums">
-                {formatINR(billed)}
-            </TableCell>
-
-            <TableCell className="text-right tabular-nums">
-                {formatINR(paid)}
-            </TableCell>
-
-            <TableCell className="text-right tabular-nums font-semibold">
-                {formatINR(billed - paid)}
-            </TableCell>
-        </TableRow>
-    );
-});
+const documentLabel = (type: string | null) => {
+    switch (type) {
+        case "tax_invoice": return "Tax Invoice";
+        case "credit_note": return "Credit Note";
+        case "debit_note": return "Debit Note";
+        default: return "Document";
+    }
+};
 
 const CustomerRow = memo(function CustomerRow({
     customer,
@@ -291,7 +282,37 @@ export function CustomerLedger() {
                     status
                 `)
                 .eq("invoice_type", "tax_invoice")
-                .neq("status", "cancelled")
+                .in("status", ["sent", "paid", "partial"])
+                .order("invoice_date", { ascending: false });
+
+            if (error) throw error;
+
+            return (data ?? []) as Invoice[];
+        },
+    });
+
+    const {
+        data: notes = EMPTY_NOTES,
+        isLoading: notesLoading,
+        error: notesError,
+    } = useQuery({
+        queryKey: ["rep-ledger-credit-debit-notes"],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from("cd_notes")
+                .select(`
+                    id,
+                    customer_id,
+                    customer_name_snapshot,
+                    invoice_number,
+                    invoice_date,
+                    invoice_type,
+                    grand_total,
+                    amount_paid,
+                    status
+                `)
+                .in("invoice_type", ["credit_note", "debit_note"])
+                .in("status", ["sent", "paid", "partial"])
                 .order("invoice_date", { ascending: false });
 
             if (error) throw error;
@@ -340,6 +361,8 @@ export function CustomerLedger() {
             return (data ?? []) as CustomerOpeningBalance[];
         },
     });
+
+    const documents = useMemo(() => [...invoices, ...notes], [invoices, notes]);
 
     const invoicesByCustomer = useMemo(() => {
         const groups = new Map<string, Invoice[]>();
@@ -407,15 +430,6 @@ export function CustomerLedger() {
         () => summary.find((customer) => customer.id === selectedCustomerId),
         [summary, selectedCustomerId],
     );
-    const customerInvoices = useMemo(
-        () =>
-            selectedCustomerId
-                ? sortByInvoiceNumber([
-                      ...(invoicesByCustomer.get(selectedCustomerId) ?? []),
-                  ])
-                : EMPTY_INVOICES,
-        [invoicesByCustomer, selectedCustomerId],
-    );
     const financialYearEnd = useMemo(
         () =>
             selectedFinancialYear
@@ -427,11 +441,11 @@ export function CustomerLedger() {
     const financialYearInvoices = useMemo(
         () =>
             filterInvoicesByFinancialYear(
-                invoices,
+                documents,
                 selectedFinancialYear,
                 financialYearEnd,
             ),
-        [invoices, selectedFinancialYear, financialYearEnd],
+        [documents, selectedFinancialYear, financialYearEnd],
     );
     const customerFinancialYearInvoices = useMemo(
         () =>
@@ -464,10 +478,121 @@ export function CustomerLedger() {
         );
     }, [payments, selectedCustomerId, selectedFinancialYear, financialYearEnd]);
 
+    const financialYearPayments = useMemo(() => {
+        const start = selectedFinancialYear?.start_date ?? "";
+        if (!start || !financialYearEnd) return EMPTY_PAYMENTS;
+
+        return payments.filter(
+            (payment) =>
+                payment.status === "received" &&
+                payment.payment_date >= start &&
+                payment.payment_date <= financialYearEnd,
+        );
+    }, [payments, selectedFinancialYear, financialYearEnd]);
+
+    const customerLedgerRows = useMemo<LedgerDisplayRow[]>(() => {
+        if (!selectedCustomerId || !selectedFinancialYear) return [];
+
+        const transactions: LedgerDisplayTransaction[] = [
+            ...customerFinancialYearInvoices
+                .filter((document) => Boolean(document.invoice_date))
+                .map((document) => ({
+                    id: document.id,
+                    kind: "document" as const,
+                    date: document.invoice_date!,
+                    document,
+                })),
+            ...customerFinancialYearPayments
+                .filter((payment) => Boolean(payment.payment_date))
+                .map((payment) => ({
+                    id: payment.id,
+                    kind: "payment" as const,
+                    date: payment.payment_date,
+                    payment,
+                })),
+        ];
+
+        transactions.sort((a, b) => {
+            const byDate = a.date.localeCompare(b.date);
+            if (byDate !== 0) return byDate;
+            if (a.kind !== b.kind) return a.kind === "document" ? -1 : 1;
+            if (a.kind === "document" && b.kind === "document") {
+                const priority = (type: string | null) =>
+                    type === "credit_note" ? 1 : 0;
+                const priorityDifference = priority(a.document.invoice_type) - priority(b.document.invoice_type);
+                if (priorityDifference !== 0) return priorityDifference;
+                return (a.document.invoice_number ?? "").localeCompare(
+                    b.document.invoice_number ?? "",
+                    undefined,
+                    { numeric: true, sensitivity: "base" },
+                );
+            }
+            return a.id.localeCompare(b.id);
+        });
+
+        let balance = Number(selectedCustomerOpeningBalance?.opening_balance ?? 0);
+        const rows: LedgerDisplayRow[] = [{
+            id: `opening-${selectedCustomerId}-${selectedFinancialYear.id}`,
+            reference: "—",
+            date: selectedFinancialYear.start_date,
+            type: "Opening Balance",
+            status: "—",
+            debit: 0,
+            credit: 0,
+            balance,
+        }];
+
+        for (const transaction of transactions) {
+            if (transaction.kind === "payment") {
+                const amount = Number(transaction.payment.amount ?? 0);
+                balance -= amount;
+                rows.push({
+                    id: transaction.id,
+                    reference: "—",
+                    date: transaction.date,
+                    type: "Payment",
+                    status: "Received",
+                    debit: 0,
+                    credit: amount,
+                    balance,
+                });
+                continue;
+            }
+
+            const document = transaction.document;
+            const amount = Number(document.grand_total ?? 0);
+            const isCreditNote = document.invoice_type === "credit_note";
+            const isDebit = document.invoice_type === "debit_note" || document.invoice_type === "tax_invoice";
+            const debit = isDebit ? amount : 0;
+            const credit = isCreditNote ? amount : 0;
+            balance += debit - credit;
+
+            rows.push({
+                id: transaction.id,
+                reference: billNo(document.invoice_number),
+                date: transaction.date,
+                type: documentLabel(document.invoice_type),
+                status: document.status ?? "—",
+                debit,
+                credit,
+                balance,
+            });
+        }
+
+        return rows;
+    }, [
+        selectedCustomerId,
+        selectedFinancialYear,
+        customerFinancialYearInvoices,
+        customerFinancialYearPayments,
+        selectedCustomerOpeningBalance,
+    ]);
+
     const isExportLoading =
         companyProfileLoading ||
         customersLoading ||
         invoicesLoading ||
+        notesLoading ||
         paymentsLoading ||
         openingBalancesLoading;
 
@@ -508,6 +633,7 @@ export function CustomerLedger() {
             companyProfile,
             summary,
             financialYearInvoices,
+            financialYearPayments,
             openingBalances,
             selectedFinancialYear,
             financialYearEnd,
@@ -518,6 +644,7 @@ export function CustomerLedger() {
         companyProfile,
         summary,
         financialYearInvoices,
+        financialYearPayments,
         openingBalances,
         financialYearEnd,
     ]);
@@ -526,6 +653,7 @@ export function CustomerLedger() {
     if (
         customersError ||
         invoicesError ||
+        notesError ||
         paymentsError ||
         openingBalancesError ||
         financialYearsError ||
@@ -577,8 +705,8 @@ export function CustomerLedger() {
                         </p>
 
                         <p className="text-xs text-muted-foreground">
-                            Export opening balance, invoices and payments for
-                            the selected financial year.
+                            Export opening balance, invoices, credit/debit notes
+                            and received payments for the selected financial year.
                         </p>
                     </div>
 
@@ -620,28 +748,35 @@ export function CustomerLedger() {
                     />
                 </div>
 
-                {/* Lifetime invoice history */}
+                {/* Selected financial-year transaction history */}
 
                 <div className="mx-3">
+                    <div className="mb-2 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold">Transaction History</h3>
+                        <span className="text-xs text-muted-foreground">
+                            {selectedFinancialYear?.year_label ?? "Select a financial year"}
+                        </span>
+                    </div>
                     <ReportTable>
                         <Table>
-                            {INVOICE_TABLE_HEADER}
-
+                            {TRANSACTION_TABLE_HEADER}
                             <TableBody>
-                                {customerInvoices.length === 0 && (
+                                {customerLedgerRows.length === 0 ? (
                                     <TableRow>
-                                        <TableCell
-                                            colSpan={6}
-                                            className="py-6 text-center text-muted-foreground"
-                                        >
-                                            No tax invoices found for this
-                                            customer.
+                                        <TableCell colSpan={7} className="py-6 text-center text-muted-foreground">
+                                            No transactions found for this financial year.
                                         </TableCell>
                                     </TableRow>
-                                )}
-
-                                {customerInvoices.map((invoice) => (
-                                    <InvoiceRow key={invoice.id} invoice={invoice} />
+                                ) : customerLedgerRows.map((row) => (
+                                    <TableRow key={row.id}>
+                                        <TableCell className="font-mono text-xs">{row.reference}</TableCell>
+                                        <TableCell>{formatDate(row.date)}</TableCell>
+                                        <TableCell className="text-xs">{row.type}</TableCell>
+                                        <TableCell className="text-xs uppercase">{row.status}</TableCell>
+                                        <TableCell className="text-right tabular-nums">{row.debit ? formatINR(row.debit) : "—"}</TableCell>
+                                        <TableCell className="text-right tabular-nums">{row.credit ? formatINR(row.credit) : "—"}</TableCell>
+                                        <TableCell className="text-right tabular-nums font-semibold">{formatINR(row.balance)}</TableCell>
+                                    </TableRow>
                                 ))}
                             </TableBody>
                         </Table>
@@ -673,6 +808,7 @@ export function CustomerLedger() {
                             !canExport ||
                             !selectedFinancialYear ||
                             financialYearInvoices.length === 0 &&
+                            financialYearPayments.length === 0 &&
                             openingBalances.length === 0
                         }
                     >
@@ -690,7 +826,8 @@ export function CustomerLedger() {
 
                     <p className="text-xs text-muted-foreground">
                         Select a financial year to export customer opening
-                        balances and invoices. Lifetime totals remain unchanged.
+                        balances, invoices, credit/debit notes and payments.
+                        Lifetime summary totals remain unchanged.
                     </p>
                 </div>
 
@@ -723,7 +860,7 @@ export function CustomerLedger() {
                         {CUSTOMER_TABLE_HEADER}
 
                         <TableBody>
-                            {customersLoading || invoicesLoading ? (
+                            {customersLoading || invoicesLoading || notesLoading ? (
                                 <TableRow>
                                     <TableCell
                                         colSpan={6}
