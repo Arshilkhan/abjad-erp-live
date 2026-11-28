@@ -18,11 +18,11 @@ interface BuildDocumentPayloadArgs {
   contactMobile: string;
   notes: string;
   status: "draft" | "sent";
-  
+
   isChallan: boolean;
   isTaxInvoice: boolean;
   isIGST: boolean;
-  
+
   challanNumber: string;
   challanDates: string[];
   movementReason: string;
@@ -30,7 +30,18 @@ interface BuildDocumentPayloadArgs {
   placeOfDispatch: string;
   placeOfDelivery: string;
   isNote: boolean;
-  
+
+  bankAccountId: string | null;
+  bankAccount: {
+    bank_name?: string | null;
+    account_holder_name?: string | null;
+    account_number?: string | null;
+    ifsc_code?: string | null;
+    branch_name?: string | null;
+    branch_code?: string | null;
+    upi_id?: string | null;
+  } | null;
+
   totals: {
     net: number;
     disc: number;
@@ -49,6 +60,8 @@ interface BuildDocumentPayloadArgs {
 }
 
 export function buildDocumentPayload({
+  bankAccountId,
+  bankAccount,
   documentNumber,
   referenceChallanNumber,
   referenceChallanDates,
@@ -123,6 +136,15 @@ export function buildDocumentPayload({
     });
   } else {
     Object.assign(payload, {
+      bank_account_id: bankAccountId,
+      bank_name_snapshot: bankAccount?.bank_name ?? null,
+      bank_account_holder_snapshot: bankAccount?.account_holder_name ?? null,
+      bank_account_number_snapshot: bankAccount?.account_number ?? null,
+      bank_ifsc_snapshot: bankAccount?.ifsc_code ?? null,
+      bank_branch_snapshot: bankAccount?.branch_name ?? null,
+      bank_branch_code_snapshot: bankAccount?.branch_code ?? null,
+      bank_upi_id_snapshot: bankAccount?.upi_id ?? null,
+
       is_igst: isIGST,
       net_value: totals.net,
       discount_amount: totals.disc,

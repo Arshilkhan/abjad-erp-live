@@ -24,6 +24,7 @@ interface Customer {
   email?: string | null;
   state?: string | null;
   state_code?: string | null;
+  bank_account_id?: string | null;
 }
 
 interface InvoiceSettings {

@@ -225,8 +225,7 @@ const ImportFileCard = memo(function ImportFileCard({
 
         {file.duplicate && file.status !== "saved" && (
           <p className="rounded-md border border-destructive p-3 text-sm text-destructive">
-            This invoice number already exists in the same financial year. The same number is allowed in a
-            different financial year.
+            This invoice number already exists in the same financial year.
           </p>
         )}
 

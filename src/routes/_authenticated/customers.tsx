@@ -29,7 +29,21 @@ export const Route = createFileRoute("/_authenticated/customers")({
   component: CustomersPage,
 });
 
-type CustomerRow = Tables<"customers">;
+type CustomerRow = Tables<"customers"> & {
+  bank_account_id: string | null;
+};
+
+type BankAccount = {
+  id: string;
+  bank_name: string | null;
+  account_holder_name: string | null;
+  account_number: string | null;
+  ifsc_code: string | null;
+  branch_name: string | null;
+  is_active: boolean;
+  is_default: boolean;
+  display_order: number;
+};
 
 const EMPTY_FORM = {
   customer_name: "",
@@ -47,6 +61,7 @@ const EMPTY_FORM = {
   credit_limit: 0,
   payment_terms: "30 Days",
   notes: "",
+  bank_account_id: "",
 };
 
 type CustomerForm = typeof EMPTY_FORM;
@@ -222,7 +237,38 @@ function CustomersPage() {
   const deferredSearch = useDeferredValue(search);
 
   const { financialYears, isLoading: financialYearsLoading } = useFinancialYears();
+  const {
+    data: bankAccounts = [],
+    isLoading: bankAccountsLoading,
+    error: bankAccountsError,
+  } = useQuery<BankAccount[]>({
+    queryKey: ["company-bank-accounts"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("company_bank_accounts")
+        .select(`
+        id,
+        bank_name,
+        account_holder_name,
+        account_number,
+        ifsc_code,
+        branch_name,
+        is_active,
+        is_default,
+        display_order
+      `)
+        .eq("is_active", true)
+        .order("display_order", { ascending: true })
+        .order("bank_name", { ascending: true });
 
+      if (error) throw error;
+
+      return (data ?? []) as BankAccount[];
+    },
+  });
+  const selectedBankAccount = bankAccounts.find(
+    (account) => account.id === form.bank_account_id,
+  );
   const [openingBalanceYearId, setOpeningBalanceYearId] = useState("");
   const [openingBalanceInput, setOpeningBalanceInput] = useState("0");
 
@@ -236,12 +282,17 @@ function CustomersPage() {
     [financialYears, openingBalanceYearId],
   );
 
-  const { data: rows = [], isLoading } = useQuery({
+  const { data: rows = [], isLoading } = useQuery<CustomerRow[]>({
     queryKey: ["customers"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("customers").select("*").order("created_at", { ascending: false });
+      const { data, error } = await (supabase as any)
+        .from("customers")
+        .select("*")
+        .order("created_at", { ascending: false });
+
       if (error) throw error;
-      return data ?? [];
+
+      return (data ?? []) as CustomerRow[];
     },
   });
 
@@ -275,13 +326,23 @@ function CustomersPage() {
 
   const save = useMutation({
     mutationFn: async () => {
-      const payload: any = { ...form, credit_limit: Number(form.credit_limit) || 0 };
+      const payload: any = {
+        ...form,
+        credit_limit: Number(form.credit_limit) || 0,
+        bank_account_id: form.bank_account_id || null,
+      };
+
+      const customersTable = (supabase as any).from("customers");
 
       if (editingId) {
-        const { error } = await supabase.from("customers").update(payload).eq("id", editingId);
+        const { error } = await customersTable
+          .update(payload)
+          .eq("id", editingId);
+
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("customers").insert(payload);
+        const { error } = await customersTable.insert(payload);
+
         if (error) throw error;
       }
     },
@@ -440,6 +501,73 @@ function CustomersPage() {
                       />
                     </div>
                   ))}
+
+                  {/* Company Bank Account */}
+                  <div className="min-w-0 space-y-1.5 sm:col-span-2">
+                    <Label className="text-xs">Company Bank Account</Label>
+
+                    <Select
+                      value={form.bank_account_id || "__none__"}
+                      onValueChange={(value) =>
+                        setForm({
+                          ...form,
+                          bank_account_id: value === "__none__" ? "" : value,
+                        })
+                      }
+                      disabled={bankAccountsLoading}
+                    >
+                      <SelectTrigger className="w-full min-w-0">
+                        <SelectValue
+                          placeholder={
+                            bankAccountsLoading
+                              ? "Loading bank accounts..."
+                              : "Select company bank account"
+                          }
+                        />
+                      </SelectTrigger>
+
+                      <SelectContent>
+                        <SelectItem value="__none__">
+                          No bank account assigned
+                        </SelectItem>
+
+                        {bankAccounts.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            {account.bank_name || "Unnamed Bank"}
+                            {account.is_default ? " (Default)" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    {selectedBankAccount && (
+                      <p className="text-xs text-muted-foreground">
+                        {selectedBankAccount.account_number
+                          ? `A/C: ${selectedBankAccount.account_number}`
+                          : "Account number not provided"}
+                        {selectedBankAccount.branch_name
+                          ? ` • ${selectedBankAccount.branch_name}`
+                          : ""}
+                        {selectedBankAccount.ifsc_code
+                          ? ` • IFSC: ${selectedBankAccount.ifsc_code}`
+                          : ""}
+                      </p>
+                    )}
+
+                    {bankAccountsError && (
+                      <p className="text-xs text-destructive">
+                        Failed to load bank accounts: {(bankAccountsError as Error).message}
+                      </p>
+                    )}
+
+                    {!bankAccountsLoading &&
+                      !bankAccountsError &&
+                      bankAccounts.length === 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          No active bank accounts found. Add one in Company Profile settings.
+                        </p>
+                      )}
+                  </div>
 
                   <div className="space-y-1.5 sm:col-span-2">
                     <Label className="text-xs">Billing Address</Label>

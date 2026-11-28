@@ -1,3 +1,4 @@
+
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { LineItem } from "./types";
 
@@ -37,7 +38,7 @@ export async function resolveCustomer({
     );
 
   if (cust) {
-    const patch: any = {};
+    const patch: Record<string, any> = {};
 
     if (custCompany.trim() && custCompany !== (cust.company_name ?? "")) {
       patch.company_name = custCompany.trim();
@@ -68,12 +69,19 @@ export async function resolveCustomer({
         .from("customers")
         .update(patch)
         .eq("id", cust.id)
-        .select()
+        .select("*")
         .single();
 
       if (error) throw error;
-
-      cust = data;
+      cust = {
+        ...data,
+        bank_account_id: data.bank_account_id ?? cust.bank_account_id ?? null,
+      };
+    } else {
+      cust = {
+        ...cust,
+        bank_account_id: cust.bank_account_id ?? null,
+      };
     }
   } else {
     const { data, error } = await supabase
@@ -86,14 +94,18 @@ export async function resolveCustomer({
         mobile: custMobile.trim() || null,
         email: custEmail.trim() || null,
         gst_number: custGst.trim() || null,
+        bank_account_id: null,
         created_by: createdBy ?? null,
       })
-      .select()
+      .select("*")
       .single();
 
     if (error) throw error;
 
-    cust = data;
+    cust = {
+      ...data,
+      bank_account_id: data.bank_account_id ?? null,
+    };
   }
 
   return cust;

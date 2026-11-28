@@ -2,7 +2,7 @@ import { salesDocumentConfig, type SalesDocumentKind } from "@/lib/sales-documen
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { extractInvoicePdf } from "@/lib/invoice-pdf.functions";
 import { sendInvoiceEmail } from "@/lib/invoice-email.functions";
 import { supabase } from "@/integrations/supabase/client";
@@ -27,10 +27,15 @@ import { saveDocument } from "./shared/save-document";
 import { resolveCustomer, resolveProducts } from "./shared/resolve-document-data";
 import { importInvoicePdf } from "./shared/pdf-import";
 
+const db = supabase as any;
+
 const CUSTOMER_COLUMNS =
-  "id, customer_name, company_name, gst_number, billing_address, state, state_code, contact_person, mobile, email";
+  "id, customer_name, company_name, gst_number, billing_address, state, state_code, contact_person, mobile, email, bank_account_id";
 const PRODUCT_COLUMNS = "id, product_name, product_code, hsn_code, unit, gst_percentage, selling_price";
+const BANK_COLUMNS =
+  "id, bank_name, account_holder_name, account_number, ifsc_code, branch_name, branch_code, upi_id, is_default, is_active";
 const REFERENCE_STALE_MS = 5 * 60 * 1000;
+const BANK_ACCOUNTS_KEY = ["company-bank-accounts"];
 
 const DOCUMENT_NUMBER_LABELS: Record<string, string> = {
   tax_invoice: "Invoice Number",
@@ -39,9 +44,43 @@ const DOCUMENT_NUMBER_LABELS: Record<string, string> = {
   credit_note: "Credit Note Number",
   debit_note: "Debit Note Number",
 };
+
+const BANK_SNAPSHOT_FIELDS = [
+  ["bank_name", "bank_name_snapshot"],
+  ["account_holder_name", "bank_account_holder_snapshot"],
+  ["account_number", "bank_account_number_snapshot"],
+  ["ifsc_code", "bank_ifsc_snapshot"],
+  ["branch_name", "bank_branch_snapshot"],
+  ["branch_code", "bank_branch_code_snapshot"],
+  ["upi_id", "bank_upi_id_snapshot"],
+] as const;
+
 const getDocumentNumberLabel = (type: string) => DOCUMENT_NUMBER_LABELS[type] ?? "Document Number";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
+
+const addSortedUnique = (list: string[], value: string) => (list.includes(value) ? list : [...list, value].sort());
+
+const fetchBankAccounts = async (): Promise<any[]> => {
+  const { data, error } = await db.from("company_bank_accounts").select(BANK_COLUMNS).eq("is_active", true);
+  if (error) throw error;
+  return data ?? [];
+};
+
+const fetchBankAccountById = async (id: string) => {
+  const { data, error } = await db.from("company_bank_accounts").select(BANK_COLUMNS).eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data;
+};
+
+const buildBankSnapshot = (bank: any, existingInvoice?: Record<string, any>) => {
+  if (!bank) return null;
+  const snapshot: Record<string, any> = { id: bank.id };
+  for (const [field, snapshotField] of BANK_SNAPSHOT_FIELDS) {
+    snapshot[field] = existingInvoice?.[snapshotField] ?? bank[field] ?? null;
+  }
+  return snapshot;
+};
 
 type InvoiceConfigFn = ReturnType<typeof useInvoiceConfig>["cfg"];
 
@@ -171,7 +210,6 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
   const [items, setItems] = useState<LineItem[]>(() => [emptyItem(1)]);
   const [productTexts, setProductTexts] = useState<string[]>([""]);
   const [invoiceDate, setInvoiceDate] = useState(todayISO);
-  const [invoiceType, setInvoiceType] = useState<string>(documentType);
 
   const [customerId, setCustomerId] = useState("");
   const [customerText, setCustomerText] = useState("");
@@ -206,9 +244,8 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
   const [placeOfDispatch, setPlaceOfDispatch] = useState("");
   const [placeOfDelivery, setPlaceOfDelivery] = useState("");
 
-  const [hydrated, setHydrated] = useState(false);
+  const hydratedRef = useRef(false);
 
-  // PDF-import state (declared up-front so the save mutation can read it).
   const runExtract = useServerFn(extractInvoicePdf);
   const sendEmail = useServerFn(sendInvoiceEmail);
   const [extracting, setExtracting] = useState(false);
@@ -218,7 +255,11 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
   const { data: customers = [] } = useQuery({
     queryKey: ["customers-list"],
     staleTime: REFERENCE_STALE_MS,
-    queryFn: async () => (await supabase.from("customers").select(CUSTOMER_COLUMNS)).data ?? [],
+    queryFn: async () => {
+      const { data, error } = await db.from("customers").select(CUSTOMER_COLUMNS);
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
   });
   const { data: products = [] } = useQuery({
     queryKey: ["products-list"],
@@ -236,11 +277,10 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
     queryFn: async () => (await supabase.from("company_profile").select("state_code").limit(1).maybeSingle()).data,
   });
 
-  // Load existing document for edit (items fetched in parallel).
   const { data: existing } = useQuery({
     queryKey: ["invoice-edit", documentType, editId],
     enabled: isEdit,
-    refetchOnWindowFocus: false, // hydration happens once; refetching would be wasted work
+    refetchOnWindowFocus: false,
     queryFn: async () => {
       const [inv, its] = await Promise.all([
         supabase.from(docTable).select("*").eq("id", editId!).single(),
@@ -250,6 +290,7 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
       return { invoice: inv.data, items: its.data ?? [] };
     },
   });
+
   const customerById = useMemo(() => new Map(customers.map((c: any) => [c.id, c])), [customers]);
   const productById = useMemo(() => new Map(products.map((p: any) => [p.id, p])), [products]);
 
@@ -257,12 +298,12 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
   const isIGST = !!(customer?.state_code && company?.state_code && customer.state_code !== company.state_code);
 
   useEffect(() => {
-    if (!existing || hydrated) return;
-    const inv = existing.invoice as Record<string, any>; // single cast instead of many `as any`
+    if (!existing || hydratedRef.current) return;
+    hydratedRef.current = true;
+    const inv = existing.invoice as Record<string, any>;
 
     setCustomerId(inv.customer_id ?? "");
     setCustomerText(inv.customer_name_snapshot ?? "");
-    setInvoiceType(documentType);
     setInvoiceDate(inv.invoice_date);
     if (!isChallan) setDocumentNumber(inv.invoice_number ?? "");
 
@@ -272,7 +313,7 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
       setReferenceChallanNumber(inv.reference_challan_number ?? "");
       setReferenceChallanDates(
         (inv.reference_challan_dates as string[] | null) ??
-        (inv.reference_challan_date ? [inv.reference_challan_date] : [])
+          (inv.reference_challan_date ? [inv.reference_challan_date] : []),
       );
     }
     if (isChallan) {
@@ -299,7 +340,6 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
     setPlaceOfDelivery(inv.place_of_delivery ?? "");
 
     if (existing.items.length) {
-      // Build both arrays in a single pass.
       const nextItems: LineItem[] = [];
       const nextTexts: string[] = [];
       existing.items.forEach((it: any, i: number) => {
@@ -324,8 +364,7 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
       setItems([emptyItem(1)]);
       setProductTexts([""]);
     }
-    setHydrated(true);
-  }, [existing, hydrated]);
+  }, [existing]);
 
   useEffect(() => {
     if (!customer) return;
@@ -336,6 +375,7 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
     setCustEmail(customer.email ?? "");
     setCustGst(customer.gst_number ?? "");
   }, [customerId, customer]);
+
   const totals = useMemo(() => {
     let net = 0;
     let tax = 0;
@@ -357,21 +397,16 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
     const grand = Math.round(preRound);
     return { net, tax, disc, subtotal, grand, round_off: grand - preRound };
   }, [items, freight, packing, otherCharges, transportCharges, deliveryCharges]);
+
   const addChallanDate = useCallback(() => {
     if (!challanDateInput) return;
-    setChallanDates((prev) => (prev.includes(challanDateInput) ? prev : [...prev, challanDateInput].sort()));
+    setChallanDates((prev) => addSortedUnique(prev, challanDateInput));
     setChallanDateInput("");
   }, [challanDateInput]);
 
   const addReferenceChallanDate = useCallback(() => {
     if (!referenceChallanDateInput) return;
-
-    setReferenceChallanDates((prev) =>
-      prev.includes(referenceChallanDateInput)
-        ? prev
-        : [...prev, referenceChallanDateInput].sort()
-    );
-
+    setReferenceChallanDates((prev) => addSortedUnique(prev, referenceChallanDateInput));
     setReferenceChallanDateInput("");
   }, [referenceChallanDateInput]);
 
@@ -437,7 +472,7 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
       }
       if (items.length === 0) throw new Error("Add at least one item");
 
-      const [cust, resolvedItems] = await Promise.all([
+      const [cust, resolvedItems, bankAccounts] = await Promise.all([
         resolveCustomer({
           supabase,
           customer,
@@ -451,11 +486,38 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
           createdBy: user?.id,
         }),
         resolveProducts({ supabase, items, productTexts, products }),
+        qc.fetchQuery({ queryKey: BANK_ACCOUNTS_KEY, staleTime: REFERENCE_STALE_MS, queryFn: fetchBankAccounts }),
       ]);
 
+      const existingInvoice = isEdit ? (existing?.invoice as Record<string, any> | undefined) : undefined;
+
+      const bankAccountId =
+        existingInvoice?.bank_account_id ??
+        cust.bank_account_id ??
+        bankAccounts.find((account: any) => account.is_default)?.id ??
+        null;
+
+      let linkedBankAccount: any = null;
+
+      if (bankAccountId) {
+        linkedBankAccount =
+          bankAccounts.find((account: any) => account.id === bankAccountId) ??
+          (existingInvoice ? await fetchBankAccountById(bankAccountId) : null);
+
+        if (!linkedBankAccount) {
+          throw new Error(
+            "The selected customer bank account could not be found or is inactive. Please check the customer's bank assignment.",
+          );
+        }
+      }
+
+      const bankSnapshot = buildBankSnapshot(linkedBankAccount, existingInvoice);
+
       const payload = buildDocumentPayload({
+        bankAccountId: bankSnapshot?.id ?? null,
+        bankAccount: bankSnapshot,
         isNote,
-        invoiceType,
+        invoiceType: documentType,
         invoiceDate,
         customerId: cust.id,
         customerName: cust.company_name || cust.customer_name,
@@ -548,6 +610,7 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
   const saveDraft = useCallback(() => save.mutate("draft"), [save.mutate]);
   const saveAndSend = useCallback(() => save.mutate("sent"), [save.mutate]);
   const goBack = useCallback(() => router.history.back(), [router]);
+
   const handlePdf = useCallback(
     (file: File) =>
       importInvoicePdf({
@@ -585,6 +648,7 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
       }),
     [runExtract, customers, products, isTaxInvoice],
   );
+
   const lowerLabel = docCfg.label.toLowerCase();
   const title = isEdit
     ? `Edit ${docCfg.label}${existing?.invoice?.invoice_number ? ` — ${existing.invoice.invoice_number}` : ""}`

@@ -490,13 +490,22 @@ function PrintableChallan({ invoice, items, company }: { invoice: any; items: an
 
 function PrintableInvoice({ invoice, items, company, typeLabel }: { invoice: any; items: any[]; company: any; typeLabel: string }) {
   const c = company ?? {};
+  const bank = {
+    bankName: invoice.bank_name_snapshot || c.bank_name || "",
+    accountHolder:
+      invoice.bank_account_holder_snapshot || "",
+    accountNumber:
+      invoice.bank_account_number_snapshot || c.bank_account || "",
+    ifsc: invoice.bank_ifsc_snapshot || c.bank_ifsc || "",
+    branch:
+      invoice.bank_branch_snapshot || c.bank_branch || "",
+    branchCode: invoice.bank_branch_code_snapshot || "",
+    upiId: invoice.bank_upi_id_snapshot || "",
+  };
   const cellBorder = "border border-black";
   const label = "font-bold text-[11px]";
   const val = "text-[11px]";
-
-  // Totals are always derived from the accepted (delivered minus rejected)
-  // quantities so the invoice stays internally consistent, including for
-  // rejections recorded before totals were recalculated on save.
+  
   const lineTotals: Record<string, number> = {};
   let netValue = 0;
   let itemDiscounts = 0;
@@ -665,10 +674,31 @@ function PrintableInvoice({ invoice, items, company, typeLabel }: { invoice: any
           <tr>
             <td className={`${cellBorder} p-2 align-top`} rowSpan={11} style={{ width: "55%" }}>
               <div className="grid grid-cols-[110px_1fr] gap-y-1 text-[11px]">
-                <div className="font-bold">BANK NAME</div><div>{c.bank_name ?? ""}</div>
-                <div className="font-bold">A/C NO.</div><div>{c.bank_account ?? ""}</div>
-                <div className="font-bold">BRANCH IFSC</div><div>{c.bank_ifsc ?? ""}</div>
-                <div className="font-bold">BRANCH NAME</div><div>{c.bank_branch ?? ""}</div>
+                <div className="font-bold">BANK NAME</div>
+                <div>{bank.bankName}</div>
+
+                <div className="font-bold">A/C NO.</div>
+                <div>{bank.accountNumber}</div>
+
+                <div className="font-bold">IFSC CODE</div>
+                <div>{bank.ifsc}</div>
+
+                <div className="font-bold">BRANCH NAME</div>
+                <div>{bank.branch}</div>
+
+                {bank.branchCode && (
+                  <>
+                    <div className="font-bold">BRANCH CODE</div>
+                    <div>{bank.branchCode}</div>
+                  </>
+                )}
+
+                {bank.upiId && (
+                  <>
+                    <div className="font-bold">UPI ID</div>
+                    <div>{bank.upiId}</div>
+                  </>
+                )}
               </div>
             </td>
             <td className={`${cellBorder} p-1 ${label}`} colSpan={2}>Net Value (Rs.)</td>

@@ -22,7 +22,6 @@ export async function buildInvoicePdf(
   items: Row[],
   company: Row | null,
 ): Promise<Uint8Array> {
-  // Delivery challans are goods-movement documents, not payment requests.
   if (String(invoice['invoice_type']) === 'delivery_challan' || String(invoice['invoice_type']) === 'challan') {
     const { buildChallanPdf } = await import('./challan-pdf-build.server')
     return await buildChallanPdf(invoice, items, company)
@@ -359,11 +358,13 @@ export async function buildInvoicePdf(
   const bankTop = y
   page.drawRectangle({ x: L, y: y - blockH, width: bankW, height: blockH, borderColor: black, borderWidth: 0.6 })
   const bank: Array<[string, any]> = [
-    ['BANK NAME', c['bank_name']],
-    ['A/C NO.', c['bank_account']],
-    ['BRANCH IFSC', c['bank_ifsc']],
-    ['BRANCH NAME', c['bank_branch']],
-  ]
+    ['BANK NAME', invoice['bank_name_snapshot'] ?? c['bank_name']],
+    ['A/C NO.', invoice['bank_account_number_snapshot'] ?? c['bank_account']],
+    ['IFSC CODE', invoice['bank_ifsc_snapshot'] ?? c['bank_ifsc']],
+    ['BRANCH NAME', invoice['bank_branch_snapshot'] ?? c['bank_branch']],
+    ['BRANCH CODE', invoice['bank_branch_code_snapshot']],
+    ['UPI ID', invoice['bank_upi_id_snapshot']],
+  ].filter(([, value]) => value != null && String(value).trim() !== '') as Array<[string, any]>
   bank.forEach(([k, v], i) => {
     draw(k, L + 5, bankTop - 15 - i * 14, 9.5, { bold: true, maxWidth: 80 })
     draw(String(v ?? ''), L + 90, bankTop - 15 - i * 14, 9.5, { maxWidth: bankW - 95 })
