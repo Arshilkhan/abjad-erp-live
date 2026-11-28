@@ -313,7 +313,7 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
       setReferenceChallanNumber(inv.reference_challan_number ?? "");
       setReferenceChallanDates(
         (inv.reference_challan_dates as string[] | null) ??
-          (inv.reference_challan_date ? [inv.reference_challan_date] : []),
+        (inv.reference_challan_date ? [inv.reference_challan_date] : []),
       );
     }
     if (isChallan) {
@@ -472,7 +472,7 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
       }
       if (items.length === 0) throw new Error("Add at least one item");
 
-      const [cust, resolvedItems, bankAccounts] = await Promise.all([
+      const [cust, resolvedItems] = await Promise.all([
         resolveCustomer({
           supabase,
           customer,
@@ -490,32 +490,10 @@ export function DocumentForm({ editId, importMode, documentType = "tax_invoice" 
       ]);
 
       const existingInvoice = isEdit ? (existing?.invoice as Record<string, any> | undefined) : undefined;
-
-      const bankAccountId =
-        existingInvoice?.bank_account_id ??
-        cust.bank_account_id ??
-        bankAccounts.find((account: any) => account.is_default)?.id ??
-        null;
-
-      let linkedBankAccount: any = null;
-
-      if (bankAccountId) {
-        linkedBankAccount =
-          bankAccounts.find((account: any) => account.id === bankAccountId) ??
-          (existingInvoice ? await fetchBankAccountById(bankAccountId) : null);
-
-        if (!linkedBankAccount) {
-          throw new Error(
-            "The selected customer bank account could not be found or is inactive. Please check the customer's bank assignment.",
-          );
-        }
-      }
-
+      const linkedBankAccount = await fetchBankAccountById(cust.bank_account_id);
       const bankSnapshot = buildBankSnapshot(linkedBankAccount, existingInvoice);
 
       const payload = buildDocumentPayload({
-        bankAccountId: bankSnapshot?.id ?? null,
-        bankAccount: bankSnapshot,
         isNote,
         invoiceType: documentType,
         invoiceDate,

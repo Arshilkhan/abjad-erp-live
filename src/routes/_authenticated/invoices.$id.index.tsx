@@ -78,12 +78,44 @@ function InvoiceDetail() {
         supabase.from(itemsTable).select("*").eq("invoice_id", id).order("sr_no"),
         supabase.from("company_profile").select("*").limit(1).maybeSingle(),
       ]);
+
       if (inv.error) throw inv.error;
+      if (items.error) throw items.error;
+      if (company.error) throw company.error;
+
       const rows = (items.data ?? []) as any[];
       const invoice = inv.data as any;
 
-      // Self-heal stored snapshots for invoices whose rejections were saved
-      // before totals were recalculated (only grand_total was adjusted then).
+      // Always resolve the bank account from the customer's current assignment.
+      // Invoice-level bank snapshots are intentionally ignored.
+      let customerBankAccount: any = null;
+
+      // Delivery challans do not display bank information.
+      if (kind !== "delivery_challan" && invoice.customer_id) {
+        const { data: customer, error: customerError } = await (supabase as any)
+          .from("customers")
+          .select("bank_account_id")
+          .eq("id", invoice.customer_id)
+          .maybeSingle();
+
+        if (customerError) throw customerError;
+
+        if (customer?.bank_account_id) {
+          const { data: bankAccount, error: bankError } = await (supabase as any)
+            .from("company_bank_accounts")
+            .select(
+              "id, bank_name, account_holder_name, account_number, ifsc_code, branch_name, branch_code, upi_id"
+            )
+            .eq("id", customer.bank_account_id)
+            .eq("is_active", true)
+            .maybeSingle();
+
+          if (bankError) throw bankError;
+
+          customerBankAccount = bankAccount;
+        }
+      }
+
       if (isTax && invoice && rows.some((it) => Number(it.rejected_quantity ?? 0) > 0)) {
         let netValue = 0, itemDiscounts = 0, taxTotal = 0;
         for (const it of rows) {
@@ -129,14 +161,24 @@ function InvoiceDetail() {
         }
       }
 
-      return { invoice, items: rows, company: company.data };
+      return {
+        invoice,
+        items: rows,
+        company: company.data,
+        customerBankAccount,
+      };
     },
   });
 
   if (isLoading) return <div className="text-muted-foreground">Loading…</div>;
   if (!data?.invoice) return <div className="text-muted-foreground">Invoice not found.</div>;
 
-  const { invoice, items, company } = data;
+  const {
+    invoice,
+    items,
+    company,
+    customerBankAccount,
+  } = data;
   const typeLabel = typeLabels[invoice.invoice_type] ?? "TAX INVOICE";
   const isCancelled = invoice.status === "cancelled";
 
@@ -394,7 +436,7 @@ function InvoiceDetail() {
             {kind === "delivery_challan" ? (
               <PrintableChallan invoice={invoice} items={items} company={company} />
             ) : (
-              <PrintableInvoice invoice={invoice} items={items} company={company} typeLabel={typeLabel} />
+              <PrintableInvoice invoice={invoice} items={items} company={company} customerBankAccount={customerBankAccount} typeLabel={typeLabel} />
             )}
           </div>
         </TabsContent>
@@ -488,24 +530,33 @@ function PrintableChallan({ invoice, items, company }: { invoice: any; items: an
   );
 }
 
-function PrintableInvoice({ invoice, items, company, typeLabel }: { invoice: any; items: any[]; company: any; typeLabel: string }) {
+function PrintableInvoice({
+  invoice,
+  items,
+  company,
+  customerBankAccount,
+  typeLabel,
+}: {
+  invoice: any;
+  items: any[];
+  company: any;
+  customerBankAccount: any;
+  typeLabel: string;
+}) {
   const c = company ?? {};
   const bank = {
-    bankName: invoice.bank_name_snapshot || c.bank_name || "",
-    accountHolder:
-      invoice.bank_account_holder_snapshot || "",
-    accountNumber:
-      invoice.bank_account_number_snapshot || c.bank_account || "",
-    ifsc: invoice.bank_ifsc_snapshot || c.bank_ifsc || "",
-    branch:
-      invoice.bank_branch_snapshot || c.bank_branch || "",
-    branchCode: invoice.bank_branch_code_snapshot || "",
-    upiId: invoice.bank_upi_id_snapshot || "",
+    bankName: customerBankAccount?.bank_name ?? "",
+    accountHolder: customerBankAccount?.account_holder_name ?? "",
+    accountNumber: customerBankAccount?.account_number ?? "",
+    ifsc: customerBankAccount?.ifsc_code ?? "",
+    branch: customerBankAccount?.branch_name ?? "",
+    branchCode: customerBankAccount?.branch_code ?? "",
+    upiId: customerBankAccount?.upi_id ?? "",
   };
   const cellBorder = "border border-black";
   const label = "font-bold text-[11px]";
   const val = "text-[11px]";
-  
+
   const lineTotals: Record<string, number> = {};
   let netValue = 0;
   let itemDiscounts = 0;
